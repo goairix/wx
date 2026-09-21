@@ -35,10 +35,11 @@ func TestRegisterHealthCard(t *testing.T) {
 	defer server.Close()
 
 	client := New(
+		"app-id",
 		"secret",
-		"token",
 		"hospital",
 		WithBaseURL(server.URL),
+		WithAppToken("token"),
 		WithRequestID(func() string { return "rid" }),
 		WithClock(func() time.Time { return time.Unix(1525392000, 0) }),
 	)
@@ -67,7 +68,7 @@ func TestRegisterHealthCardReturnsPlatformError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New("secret", "token", "hospital", WithBaseURL(server.URL))
+	client := New("app-id", "secret", "hospital", WithBaseURL(server.URL), WithAppToken("token"))
 	_, err := client.RegisterHealthCard(RegisterHealthCardRequest{WechatCode: "wechat"})
 	apiErr, ok := err.(*APIError)
 	if !ok {
@@ -84,7 +85,7 @@ func TestRegisterHealthCardRejectsHTTPError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New("secret", "token", "hospital", WithBaseURL(server.URL))
+	client := New("app-id", "secret", "hospital", WithBaseURL(server.URL), WithAppToken("token"))
 	_, err := client.RegisterHealthCard(RegisterHealthCardRequest{WechatCode: "wechat"})
 	if err == nil || err.Error() != "health card http error: status_code=502" {
 		t.Fatalf("error = %v", err)
@@ -97,7 +98,7 @@ func TestRegisterHealthCardRejectsMalformedResponse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New("secret", "token", "hospital", WithBaseURL(server.URL))
+	client := New("app-id", "secret", "hospital", WithBaseURL(server.URL), WithAppToken("token"))
 	_, err := client.RegisterHealthCard(RegisterHealthCardRequest{WechatCode: "wechat"})
 	if err == nil {
 		t.Fatal("expected malformed JSON error")
@@ -109,7 +110,7 @@ func TestRegisterHealthCardReturnsTransportError(t *testing.T) {
 	baseURL := server.URL
 	server.Close()
 
-	client := New("secret", "token", "hospital", WithBaseURL(baseURL))
+	client := New("app-id", "secret", "hospital", WithBaseURL(baseURL), WithAppToken("token"))
 	_, err := client.RegisterHealthCard(RegisterHealthCardRequest{WechatCode: "wechat"})
 	if err == nil {
 		t.Fatal("expected transport error")

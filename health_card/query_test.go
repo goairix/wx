@@ -28,7 +28,7 @@ func TestGetHealthCardByHealthCode(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New("secret", "token", "hospital", WithBaseURL(server.URL))
+	client := New("app-id", "secret", "hospital", WithBaseURL(server.URL), WithAppToken("token"))
 	got, err := client.GetHealthCardByHealthCode("health-code")
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +58,7 @@ func TestGetRegInfoByCode(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New("secret", "token", "hospital", WithBaseURL(server.URL))
+	client := New("app-id", "secret", "hospital", WithBaseURL(server.URL), WithAppToken("token"))
 	got, err := client.GetRegInfoByCode("reg-code")
 	if err != nil {
 		t.Fatal(err)

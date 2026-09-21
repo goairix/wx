@@ -15,8 +15,8 @@ import (
 
 func main() {
 	client := health_card.New(
-		"health-card-app-secret",
-		"health-card-app-token",
+		"health-platform-app-id",
+		"health-platform-app-secret",
 		"hospital-id",
 	)
 
@@ -42,5 +42,9 @@ func main() {
 - `RegisterHealthCard`：使用插件返回的 `wechatCode` 注册新卡。
 - `GetHealthCardByHealthCode`：使用插件返回的 `healthCode` 获取已有卡信息。
 - `GetRegInfoByCode`：使用绑卡组件异常场景返回的 `regInfoCode` 获取建档表单信息。
+
+首次调用业务接口时，客户端会使用电子健康卡开放平台分配的 `appId` 和 `appSecret` 自动调用 `getAppToken` 获取 `appToken`，并在内存中缓存约 7200 秒。不要把这里的 `appId` 与微信小程序 AppID 混淆，也不要把 `appSecret` 放到小程序端。
+
+如果应用已经自行获取了 `appToken`，可以通过 `WithAppToken` 注入；否则不需要手动填写 `appToken`。`appToken` 过期后客户端会自动重新获取。
 
 `New` 的可选项包括 `WithChannelNum`、`WithRelatedAppID` 和 `WithRelatedOpenID`。测试时可以使用 `WithBaseURL`、`WithHTTPClient`、`WithClock` 和 `WithRequestID`。

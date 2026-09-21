@@ -8,15 +8,19 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
 const defaultBaseURL = "https://p-healthopen.tengmed.com"
+const getAppTokenPath = "/rest/auth/HealthCard/HealthOpenAuth/AuthObj/getAppToken"
 
 // Client calls the Tencent Electronic Health Card Open Platform.
 type Client struct {
+	appID        string
 	appSecret    string
 	appToken     string
+	tokenUntil   time.Time
 	hospitalID   string
 	baseURL      string
 	channelNum   int
@@ -25,6 +29,7 @@ type Client struct {
 	httpClient   *http.Client
 	now          func() time.Time
 	requestID    func() string
+	tokenMu      sync.Mutex
 }
 
 // Option customizes a Client.
@@ -47,6 +52,12 @@ func WithHTTPClient(httpClient *http.Client) Option {
 // WithChannelNum sets the platform channel number.
 func WithChannelNum(channelNum int) Option {
 	return func(client *Client) { client.channelNum = channelNum }
+}
+
+// WithAppToken supplies an already fetched token. When omitted, the client
+// obtains and caches a token through the platform getAppToken API.
+func WithAppToken(appToken string) Option {
+	return func(client *Client) { client.appToken = appToken }
 }
 
 // WithRelatedAppID sets the optional related mini-program or service account ID.
@@ -78,10 +89,10 @@ func WithRequestID(requestID func() string) Option {
 }
 
 // New creates a Tencent Electronic Health Card client.
-func New(appSecret, appToken, hospitalID string, opts ...Option) *Client {
+func New(appID, appSecret, hospitalID string, opts ...Option) *Client {
 	client := &Client{
+		appID:      appID,
 		appSecret:  appSecret,
-		appToken:   appToken,
 		hospitalID: hospitalID,
 		baseURL:    defaultBaseURL,
 		channelNum: 0,
@@ -97,6 +108,35 @@ func New(appSecret, appToken, hospitalID string, opts ...Option) *Client {
 	return client
 }
 
+// AppToken returns a cached platform token or fetches a new one when needed.
+func (client *Client) AppToken() (string, error) {
+	client.tokenMu.Lock()
+	defer client.tokenMu.Unlock()
+
+	if client.appToken != "" && (client.tokenUntil.IsZero() || client.now().Before(client.tokenUntil)) {
+		return client.appToken, nil
+	}
+
+	var result AppTokenResponse
+	if err := client.do(getAppTokenPath, struct {
+		AppID string `json:"appId"`
+	}{AppID: client.appID}, &result); err != nil {
+		return "", err
+	}
+	if result.AppToken == "" {
+		return "", fmt.Errorf("health card app token response is empty")
+	}
+	client.appToken = result.AppToken
+	if result.ExpiresIn > 0 {
+		refreshAfter := result.ExpiresIn - 60
+		if refreshAfter <= 0 {
+			refreshAfter = result.ExpiresIn
+		}
+		client.tokenUntil = client.now().Add(time.Duration(refreshAfter) * time.Second)
+	}
+	return client.appToken, nil
+}
+
 func newRequestID() string {
 	data := make([]byte, 16)
 	if _, err := rand.Read(data); err != nil {
@@ -106,8 +146,17 @@ func newRequestID() string {
 }
 
 func (client *Client) do(path string, req interface{}, result interface{}) error {
+	if path != getAppTokenPath {
+		if _, err := client.AppToken(); err != nil {
+			return err
+		}
+	}
+	appToken := client.appToken
+	if path == getAppTokenPath {
+		appToken = ""
+	}
 	commonIn := CommonIn{
-		AppToken:     client.appToken,
+		AppToken:     appToken,
 		RequestID:    client.requestID(),
 		HospitalID:   client.hospitalID,
 		Timestamp:    fmt.Sprintf("%d", client.now().Unix()),

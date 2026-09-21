@@ -21,6 +21,12 @@ type CommonOut struct {
 	ErrMsg     string `json:"errMsg"`
 }
 
+// AppTokenResponse contains a platform token and its lifetime in seconds.
+type AppTokenResponse struct {
+	AppToken  string `json:"appToken"`
+	ExpiresIn int    `json:"expiresIn"`
+}
+
 // APIError is returned when the Health Card platform rejects a request.
 type APIError struct {
 	RequestID string
