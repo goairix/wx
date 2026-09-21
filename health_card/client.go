@@ -15,14 +15,16 @@ const defaultBaseURL = "https://p-healthopen.tengmed.com"
 
 // Client calls the Tencent Electronic Health Card Open Platform.
 type Client struct {
-	appSecret  string
-	appToken   string
-	hospitalID string
-	baseURL    string
-	channelNum int
-	httpClient *http.Client
-	now        func() time.Time
-	requestID  func() string
+	appSecret    string
+	appToken     string
+	hospitalID   string
+	baseURL      string
+	channelNum   int
+	relateAppID  string
+	relateOpenID string
+	httpClient   *http.Client
+	now          func() time.Time
+	requestID    func() string
 }
 
 // Option customizes a Client.
@@ -45,6 +47,16 @@ func WithHTTPClient(httpClient *http.Client) Option {
 // WithChannelNum sets the platform channel number.
 func WithChannelNum(channelNum int) Option {
 	return func(client *Client) { client.channelNum = channelNum }
+}
+
+// WithRelatedAppID sets the optional related mini-program or service account ID.
+func WithRelatedAppID(appID string) Option {
+	return func(client *Client) { client.relateAppID = appID }
+}
+
+// WithRelatedOpenID sets the optional related WeChat user open ID.
+func WithRelatedOpenID(openID string) Option {
+	return func(client *Client) { client.relateOpenID = openID }
 }
 
 // WithClock replaces the clock used to create request timestamps.
@@ -95,11 +107,13 @@ func newRequestID() string {
 
 func (client *Client) do(path string, req interface{}, result interface{}) error {
 	commonIn := CommonIn{
-		AppToken:   client.appToken,
-		RequestID:  client.requestID(),
-		HospitalID: client.hospitalID,
-		Timestamp:  fmt.Sprintf("%d", client.now().Unix()),
-		ChannelNum: client.channelNum,
+		AppToken:     client.appToken,
+		RequestID:    client.requestID(),
+		HospitalID:   client.hospitalID,
+		Timestamp:    fmt.Sprintf("%d", client.now().Unix()),
+		ChannelNum:   client.channelNum,
+		RelateAppID:  client.relateAppID,
+		RelateOpenID: client.relateOpenID,
 	}
 
 	requestValues, err := structMap(req)

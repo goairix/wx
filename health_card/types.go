@@ -1,5 +1,7 @@
 package health_card
 
+import "strconv"
+
 // CommonIn contains parameters shared by every Health Card API request.
 type CommonIn struct {
 	AppToken     string `json:"appToken"`
@@ -27,7 +29,7 @@ type APIError struct {
 }
 
 func (e *APIError) Error() string {
-	return "health card api error: code=" + itoa(e.Code) + ", request_id=" + e.RequestID + ", message=" + e.Message
+	return "health card api error: code=" + strconv.Itoa(e.Code) + ", request_id=" + e.RequestID + ", message=" + e.Message
 }
 
 // RegisterHealthCardRequest contains fields accepted by registerHealthCard.
@@ -91,34 +93,7 @@ type RegisterHealthCardResponse struct {
 	AdminExt     string `json:"adminExt"`
 }
 
-type responseEnvelope struct {
-	CommonOut CommonOut   `json:"commonOut"`
-	Rsp       interface{} `json:"rsp"`
-}
-
 type requestEnvelope struct {
 	CommonIn CommonIn    `json:"commonIn"`
 	Req      interface{} `json:"req"`
-}
-
-func itoa(value int) string {
-	if value == 0 {
-		return "0"
-	}
-	negative := value < 0
-	if negative {
-		value = -value
-	}
-	var digits [20]byte
-	i := len(digits)
-	for value > 0 {
-		i--
-		digits[i] = byte('0' + value%10)
-		value /= 10
-	}
-	if negative {
-		i--
-		digits[i] = '-'
-	}
-	return string(digits[i:])
 }

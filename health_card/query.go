@@ -50,6 +50,10 @@ type RegistrationInfo struct {
 	VerifyStatus bool       `json:"verifyStatus"`
 }
 
+// RegistrationInfoResponse is kept as an explicit response name for callers
+// that prefer the response-oriented naming used by the other APIs.
+type RegistrationInfoResponse = RegistrationInfo
+
 // GetHealthCardByHealthCode exchanges a one-time healthCode for card data.
 func (client *Client) GetHealthCardByHealthCode(healthCode string) (HealthCardResponse, error) {
 	var result HealthCardResponse
