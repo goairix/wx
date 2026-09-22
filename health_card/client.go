@@ -18,6 +18,7 @@ import (
 	"github.com/goairix/wx/health_card/patient"
 	"github.com/goairix/wx/health_card/usage"
 	"github.com/goairix/wx/health_card/verification"
+	kernelContracts "github.com/goairix/wx/kernel/contracts"
 )
 
 const defaultBaseURL = "https://p-healthopen.tengmed.com"
@@ -25,19 +26,20 @@ const getAppTokenPath = "/rest/auth/HealthCard/HealthOpenAuth/AuthObj/getAppToke
 
 // Client calls the Tencent Electronic Health Card Open Platform.
 type Client struct {
-	appID        string
-	appSecret    string
-	appToken     string
-	tokenUntil   time.Time
-	hospitalID   string
-	baseURL      string
-	channelNum   int
-	relateAppID  string
-	relateOpenID string
-	httpClient   *http.Client
-	now          func() time.Time
-	requestID    func() string
-	tokenMu      sync.Mutex
+	appID         string
+	appSecret     string
+	appToken      string
+	tokenUntil    time.Time
+	hospitalID    string
+	baseURL       string
+	channelNum    int
+	relateAppID   string
+	relateOpenID  string
+	httpClient    *http.Client
+	now           func() time.Time
+	requestID     func() string
+	tokenProvider kernelContracts.AccessTokenProvider
+	tokenMu       sync.Mutex
 }
 
 // Card 返回健康卡注册、查询和展码领域客户端。
@@ -63,6 +65,16 @@ func (client *Client) AntiFraud() *anti_fraud.Client { return anti_fraud.New(cli
 
 // Option customizes a Client.
 type Option func(*Client)
+
+// WithAccessTokenProvider 注入外部 appToken 提供器。设置后不再请求腾讯的凭证接口。
+func WithAccessTokenProvider(provider kernelContracts.AccessTokenProvider) Option {
+	return func(client *Client) { client.tokenProvider = provider }
+}
+
+// WithTokenProvider 是 WithAccessTokenProvider 的简写别名。
+func WithTokenProvider(provider kernelContracts.AccessTokenProvider) Option {
+	return WithAccessTokenProvider(provider)
+}
 
 // WithBaseURL overrides the production endpoint, primarily for testing.
 func WithBaseURL(baseURL string) Option {
@@ -139,6 +151,17 @@ func New(appID, appSecret, hospitalID string, opts ...Option) *Client {
 
 // AppToken returns a cached platform token or fetches a new one when needed.
 func (client *Client) AppToken() (string, error) {
+	if client.tokenProvider != nil {
+		token, err := client.tokenProvider.GetAccessToken()
+		if err != nil {
+			return "", err
+		}
+		if token.AccessToken == "" {
+			return "", fmt.Errorf("health card app token response is empty")
+		}
+		client.appToken = token.AccessToken
+		return token.AccessToken, nil
+	}
 	client.tokenMu.Lock()
 	defer client.tokenMu.Unlock()
 

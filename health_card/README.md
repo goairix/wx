@@ -3,6 +3,11 @@
 本包按领域封装腾讯电子健康卡开放平台接口。根客户端负责 `appToken` 自动获取、公共参数、签名、HTTP 和错误处理；业务按 `Card()`、`Patient()` 等入口使用领域接口。
 
 ```go
+import (
+	"github.com/goairix/wx/health_card"
+	"github.com/goairix/wx/health_card/card"
+)
+
 client := health_card.New(appID, appSecret, hospitalID)
 cards := client.Card()
 result, err := cards.Register(card.RegisterRequest{
@@ -38,5 +43,7 @@ client := health_card.New(appID, appSecret, hospitalID,
 ```
 
 测试环境可使用 `WithBaseURL`、`WithHTTPClient`、`WithClock`、`WithRequestID`；已有有效凭证时可用 `WithAppToken`。平台返回非零 `resultCode` 时，方法返回 `*health_card.APIError`。
+
+如果应用由统一中控管理凭证，可传入实现 `kernel/contracts.AccessTokenProvider` 的对象：`health_card.WithAccessTokenProvider(provider)`（`WithTokenProvider` 亦可）。外部 Provider 优先于 SDK 默认的 `getAppToken` 请求。
 
 标准健康卡管理页和展码页由腾讯前端组件承载；如果业务自建页面，应使用 `Card()` 中的二维码和查询接口，并由后端完成签名请求。
