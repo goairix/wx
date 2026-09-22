@@ -7,6 +7,7 @@ import (
 	"crypto/cipher"
 	"encoding/base64"
 	"encoding/binary"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -121,6 +122,29 @@ func TestDecryptMessage(t *testing.T) {
 	}
 	if _, err := DecryptMessage("bad", ciphertext, "receiver"); err == nil {
 		t.Fatal("accepted invalid key")
+	}
+}
+
+func TestDecryptMessageAcceptsProtocolPaddingLengths(t *testing.T) {
+	key := bytes.Repeat([]byte("k"), 32)
+	encodedKey := strings.TrimRight(base64.StdEncoding.EncodeToString(key), "=")
+
+	for padding := 17; padding <= 32; padding++ {
+		padding := padding
+		t.Run(fmt.Sprintf("padding-%d", padding), func(t *testing.T) {
+			// With an empty receiver ID, the encrypted payload has 20 bytes of
+			// framing before the message. Choose the message length so that the
+			// protocol's 32-byte PKCS#7 padding is exactly padding bytes.
+			message := bytes.Repeat([]byte("m"), 44-padding)
+			ciphertext := fixtureCiphertext(t, key, message, "", 32)
+			decrypted, err := DecryptMessage(encodedKey, ciphertext, "")
+			if err != nil {
+				t.Fatalf("padding=%d: decrypt failed: %v", padding, err)
+			}
+			if !bytes.Equal(decrypted, message) {
+				t.Fatalf("padding=%d: message=%q, want %q", padding, decrypted, message)
+			}
+		})
 	}
 }
 

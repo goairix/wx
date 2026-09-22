@@ -19,6 +19,12 @@ var (
 	ErrInvalidReceiver  = errors.New("webhook: invalid receiver id")
 )
 
+// wechatPKCS7BlockSize is the block size mandated by WeChat's encrypted
+// message protocol. It differs from AES's 16-byte cipher block size: AES-CBC
+// still operates on 16-byte blocks, while the protocol applies PKCS#7
+// padding in 32-byte units.
+const wechatPKCS7BlockSize = 32
+
 // DecryptMessage decrypts a WeChat encrypted message. encodingAESKey is the
 // unpadded base64 key supplied by the platform and receiverID is the expected
 // account or enterprise identifier.
@@ -40,7 +46,7 @@ func DecryptMessage(encodingAESKey, encrypted, receiverID string) ([]byte, error
 	}
 	plain := make([]byte, len(ciphertext))
 	cipher.NewCBCDecrypter(block, key[:aes.BlockSize]).CryptBlocks(plain, ciphertext)
-	plain, err = unpad(plain, aes.BlockSize)
+	plain, err = unpad(plain, wechatPKCS7BlockSize)
 	if err != nil {
 		return nil, err
 	}
