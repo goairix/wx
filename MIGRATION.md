@@ -36,3 +36,15 @@ github.com/goairix/wx/v2/<package>
 ## 兼容性说明
 
 v2 不提供旧路径的兼容包装层。v1 和 v2 是两个独立的 major module，调用方需要显式迁移到新的导入路径，并根据 v2 发布说明处理 API 变化。
+
+## `support` 包拆分
+
+v2 不再提供名为 `support` 的聚合包。原有能力按职责迁移：
+
+- `support/http` → `core/transport`
+- `support/cache` → `core/cache`
+- `support/lock` → `core/auth` 的内部刷新协调
+- `support/aes`、`support/encryptor` → `core/webhook`
+- `support/util.RandString` → `core/random`
+
+迁移完成后，旧 `support/` 目录会从 v2 源码中删除；请直接依赖职责明确的 core 包。

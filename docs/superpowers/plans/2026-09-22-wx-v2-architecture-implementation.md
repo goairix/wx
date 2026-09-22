@@ -16,6 +16,7 @@
 - 最终 `go.mod` 和 `go.sum` 不得包含 `github.com/pkg/errors`；迁移旧目录期间可暂时保留，Task 12 必须删除。
 - 每个领域模块至少有请求构造、响应解析和 `httptest.Server` 集成测试。
 - 不在 v2 中添加 v1 兼容包装层；v1 代码只作为迁移参考，完成迁移后删除旧实现。
+- v2 不保留名为 `support` 的通用包：`support/http` 迁移到 `core/transport`，`support/cache` 迁移到 `core/cache`，`support/lock` 收敛到 `core/auth` 内部协调，`support/aes` 与 `support/encryptor` 迁移到 `core/webhook`，随机 nonce 迁移到 `core/random`。
 - 每个任务完成后运行该任务列出的测试并提交一个独立 commit。
 
 ## File Structure Map
@@ -29,6 +30,7 @@
 | Cache | `core/cache/cache.go`, `core/cache/memory.go` | 缓存接口和默认内存缓存。 |
 | Errors | `core/errors/error.go`, `core/errors/parser.go` | 结构化错误和平台错误解析器。 |
 | Observability | `core/observability/hook.go` | request hook、日志和 trace 扩展点。 |
+| Random | `core/random/` | 非安全随机 nonce 等小型能力；不提供通用 `util` 包。 |
 | Webhook | `core/webhook/*.go` | 签名、AES、XML/JSON 和响应基础设施。 |
 | Platforms | `official/`, `miniapp/`, `work/`, `openplatform/`, `mobileapp/`, `healthcard/` | 平台 Client、配置、认证和领域 API。 |
 | Test kit | `internal/testkit/*.go` | fake server、请求断言、token response fixture。 |
@@ -630,14 +632,14 @@ git add healthcard
 
 ### External error dependency migration inventory
 
-The following current imports must be replaced by `core/errors` while their domains migrate: `kernel/error/error.go`, `support/cache/error.go`, `support/encryptor/encrypt.go`, `base/open/open.go`, `app/oauth/oauth.go`, `official/oauth/oauth.go`, `official/message/template.go`, `mini_program/wxa_code/wxa_code.go`, `mini_program/authorizer/account.go`, `mini_program/authorizer/tester.go`, `mini_program/authorizer/domain.go`, `mini_program/message/subscribe.go`, `mini_program/encryptor/encryptor.go`, `open_platform/access_token.go`, and `open_platform/code/code.go`. Every replacement must preserve the original message and make the returned error discoverable with `core/errors.Is` or `core/errors.As` where a cause exists.
+The following current imports must be replaced by `core/errors` while their domains migrate: `kernel/error/error.go`, `support/cache/error.go`, `support/encryptor/encrypt.go`, `base/open/open.go`, `app/oauth/oauth.go`, `official/oauth/oauth.go`, `official/message/template.go`, `mini_program/wxa_code/wxa_code.go`, `mini_program/authorizer/account.go`, `mini_program/authorizer/tester.go`, `mini_program/authorizer/domain.go`, `mini_program/message/subscribe.go`, `mini_program/encryptor/encryptor.go`, `open_platform/access_token.go`, and `open_platform/code/code.go`. The `support/cache` and `support/encryptor` paths are temporary v1 locations; their v2 replacements are `core/cache`, `core/webhook`, and `core/errors`. Every replacement must preserve the original message and make the returned error discoverable with `core/errors.Is` or `core/errors.As` where a cause exists.
 
 ---
 
 ### Task 12: Remove old implementations and complete webhook adapters
 
 **Files:**
-- Delete after migration: obsolete v1 files under `app/`, `base/`, `kernel/`, `mini_program/`, `open_platform/`, `open_work/`, `support/`, and migrated files under platform directories; retain only files listed in the final v2 tree
+- Delete after migration: obsolete v1 files under `app/`, `base/`, `kernel/`, `mini_program/`, `open_platform/`, `open_work/`, `support/`, and migrated files under platform directories; retain only files listed in the final v2 tree. The final v2 tree must not contain a top-level `support/` package.
 - Create: `official/webhook/`, `miniapp/webhook/`, `work/webhook/`, `openplatform/webhook/`
 - Modify: `core/webhook/`
 
@@ -729,4 +731,3 @@ git tag -a v2.0.0-rc1 -m "wx v2.0.0 release candidate"
 ```
 
 The final `v2.0.0` tag is created only after the release candidate has been reviewed and all platform acceptance tests pass.
-

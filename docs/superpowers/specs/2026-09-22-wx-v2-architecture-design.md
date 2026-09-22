@@ -64,6 +64,7 @@ core/
   cache/         # Cache 接口和默认实现
   errors/        # 结构化错误和平台错误解析接口
   observability/ # 请求日志、trace hook、metrics hook
+  random/        # 非安全随机 nonce 等小型能力
   webhook/       # 通用签名校验、AES 解密、消息解析和响应封装
 
 official/
@@ -126,6 +127,16 @@ healthcard/
   notification/
   antifraud/
 ```
+
+v2 不保留名为 `support` 的通用包。旧 `support` 目录按职责迁移：
+
+- `support/http` → `core/transport`。
+- `support/cache` → `core/cache`。
+- `support/lock` → `core/auth` 内部的刷新协调，不再暴露通用锁包。
+- `support/aes` 与 `support/encryptor` → `core/webhook`；平台消息适配器只调用明确的签名、解密和响应接口。
+- `support/util` 中的随机 nonce 能力 → `core/random`；不再创建新的 `util` 或 `support` 聚合包。
+
+平台代码只能依赖这些按职责命名的 core 包，迁移完成后删除整个旧 `support/` 目录。
 
 当前 `mini_program` 命名统一为 `miniapp`。企业微信小程序放在 `work/miniapp`，因为它使用不同的 API、凭证和用户模型。当前 `app` 重命名为 `mobileapp`，避免通用的 `app` 包名无法表达平台含义。当前 `open_work` 的授权能力归入 `work/authorizer`。
 
