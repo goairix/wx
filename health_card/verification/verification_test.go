@@ -8,13 +8,16 @@ func (f *fakeCaller) Call(path string, req interface{}, result interface{}) erro
 	f.path = path
 	return nil
 }
+func (f *fakeCaller) CallWithRelated(path string, req interface{}, result interface{}, relateOpenID string) error {
+	return f.Call(path, req, result)
+}
 func TestVerificationEndpoints(t *testing.T) {
 	f := &fakeCaller{}
 	_, _ = New(f).RegisterFaceOrder(RegisterFaceOrderRequest{})
 	if f.path != faceOrderPath {
 		t.Fatalf("path=%q", f.path)
 	}
-	_, _ = New(f).CheckUniformVerifyResult(CheckUniformVerifyResultRequest{})
+	_, _ = New(f).CheckUniformVerifyResult(CheckUniformVerifyResultRequest{}, "openid")
 	if f.path != uniformResultPath {
 		t.Fatalf("path=%q", f.path)
 	}

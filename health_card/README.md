@@ -18,6 +18,10 @@ result, err := cards.Register(card.RegisterRequest{
 
 `wechatCode`、`healthCode`、`regInfoCode` 等一次性编码由前端小程序插件或公众号流程取得，再传给业务后端；`appToken` 不需要业务手工填写，SDK 会用电子健康卡平台的 `appID/appSecret` 自动获取并在内存缓存。`appSecret`、个人信息和一次性编码不能下发到前端或写入日志。
 
+腾讯仅在部分接口的 `commonIn` 中要求关联身份。SDK 只会在这些接口中自动填入 `relateAppId`；调用方必须把当前用户的 `relateOpenId` 作为该接口的必填参数传入。`relateOpenId` 应由 `wx.login` 的 code 换取 session 后取得，不能使用 `wechatCode` 或 unionid。
+
+当前需要传入 `relateOpenId` 的方法为：`Card().GetByHealthCode`、`Card().GetDynamicQRCode`、`Patient().GetRegistrationInfo`、`Usage().ReportHISData`、`Verification().CreateUniformVerifyOrder`、`Verification().CheckUniformVerifyResult`、`Verification().GetRealPersonUserInfo`、`Verification().NotifyRealPersonVerifyResult`。其他方法不会发送 `relateAppId/relateOpenId`。
+
 ## 领域包
 
 | 入口 | 主要服务 | 说明 |
@@ -39,10 +43,19 @@ result, err := cards.Register(card.RegisterRequest{
 ```go
 client := health_card.New(appID, appSecret, hospitalID, relateAppID,
 	health_card.WithChannelNum(0),
-	health_card.WithRelatedAppID(relatedAppID),
-	health_card.WithRelatedOpenID(relatedOpenID),
 )
 ```
+
+`New` 的第四个参数就是关联小程序/公众号的 `relateAppId`，通常直接传入即可，不需要再配置 `WithRelatedAppID`。需要关联身份的接口在方法调用处传入 `relateOpenId`，例如：
+
+```go
+result, err := client.Card().GetByHealthCode(
+	card.GetByHealthCodeRequest{HealthCode: healthCode},
+	session.Openid,
+)
+```
+
+不要求关联身份的接口不会发送这两个字段；因此不会把客户端配置的 `relateAppId` 误带到所有请求中。
 
 测试环境可使用 `WithBaseURL`、`WithHTTPClient`、`WithClock`、`WithRequestID`；已有有效凭证时可用 `WithAppToken`。平台返回非零 `resultCode` 时，方法返回 `*health_card.APIError`。
 

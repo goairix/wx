@@ -36,7 +36,6 @@ type Client struct {
 	baseURL             string
 	channelNum          int
 	relateAppID         string
-	relateOpenID        string
 	httpClient          *http.Client
 	now                 func() time.Time
 	requestID           func() string
@@ -108,11 +107,6 @@ func WithAppToken(appToken string) Option {
 // WithRelatedAppID 覆盖关联的小程序或公众号 AppID。
 func WithRelatedAppID(appID string) Option {
 	return func(client *Client) { client.relateAppID = appID }
-}
-
-// WithRelatedOpenID 设置关联的微信用户 OpenID（可选）。
-func WithRelatedOpenID(openID string) Option {
-	return func(client *Client) { client.relateOpenID = openID }
 }
 
 // WithClock 替换生成请求时间戳的时钟，主要用于测试。
@@ -193,7 +187,7 @@ func (client *Client) AppToken() (string, error) {
 	var result AppTokenResponse
 	if err := client.do(getAppTokenPath, struct {
 		AppID string `json:"appId"`
-	}{AppID: client.appID}, &result); err != nil {
+	}{AppID: client.appID}, &result, false, ""); err != nil {
 		return "", err
 	}
 	if result.AppToken == "" {
@@ -213,7 +207,7 @@ func newRequestID() string {
 	return strings.ToUpper(hex.EncodeToString(data))
 }
 
-func (client *Client) do(path string, req interface{}, result interface{}) error {
+func (client *Client) do(path string, req interface{}, result interface{}, related bool, relateOpenID string) error {
 	appToken := ""
 	if path != getAppTokenPath {
 		var err error
@@ -223,13 +217,15 @@ func (client *Client) do(path string, req interface{}, result interface{}) error
 		}
 	}
 	commonIn := CommonIn{
-		AppToken:     appToken,
-		RequestID:    client.requestID(),
-		HospitalID:   client.hospitalID,
-		Timestamp:    fmt.Sprintf("%d", client.now().Unix()),
-		ChannelNum:   client.channelNum,
-		RelateAppID:  client.relateAppID,
-		RelateOpenID: client.relateOpenID,
+		AppToken:   appToken,
+		RequestID:  client.requestID(),
+		HospitalID: client.hospitalID,
+		Timestamp:  fmt.Sprintf("%d", client.now().Unix()),
+		ChannelNum: client.channelNum,
+	}
+	if related {
+		commonIn.RelateAppID = client.relateAppID
+		commonIn.RelateOpenID = relateOpenID
 	}
 
 	requestValues, err := structMap(req)

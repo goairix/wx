@@ -5,6 +5,11 @@
 业务调用示例：
 
 ```go
+import (
+	"github.com/goairix/wx/health_card"
+	"github.com/goairix/wx/health_card/card"
+)
+
 client := health_card.New(appID, appSecret, hospitalID, relateAppID)
-result, err := client.Card().GetByHealthCode("health-code")
+result, err := client.Card().GetByHealthCode(card.GetByHealthCodeRequest{HealthCode: "health-code"}, relateOpenID)
 ```

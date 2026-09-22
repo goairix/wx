@@ -87,9 +87,9 @@ client.Notification()
 client.AntiFraud()
 ```
 
-每个领域子包包含自己的客户端、请求/响应 DTO、接口路径常量和方法，并通过 `health_card/contracts.Caller` 接口发起请求。确实需要跨领域复用的结构放在 `health_card/model`，避免根包导入子包、子包又导入根包的 Go 循环依赖。领域子包不关心签名、Token 刷新、HTTP 客户端和腾讯公共响应封装。根包只暴露 `Call(path, request, response)` 作为传输边界，appToken 的互斥锁和缓存仍然封装在根包内部。根客户端的方法会将自身作为 Caller 传给对应子包，整体用法与仓库中 `official.Menu()`、`official.QrCode()`、`open_platform.Code()` 的风格一致。
+每个领域子包包含自己的客户端、请求/响应 DTO、接口路径常量和方法，并通过 `health_card/contracts.Caller` 接口发起请求。确实需要跨领域复用的结构放在 `health_card/model`，避免根包导入子包、子包又导入根包的 Go 循环依赖。领域子包不关心签名、Token 刷新、HTTP 客户端和腾讯公共响应封装。根包暴露普通的 `Call(path, request, response)` 和需要关联微信身份的 `CallWithRelated(path, request, response, relateOpenID)` 两个传输入口；后者只由文档明确要求 `relateAppId/relateOpenId` 的领域方法使用。appToken 的互斥锁和缓存仍然封装在根包内部。根客户端的方法会将自身作为 Caller 传给对应子包，整体用法与仓库中 `official.Menu()`、`official.QrCode()`、`open_platform.Code()` 的风格一致。
 
-根客户端保留测试和部署所需的配置项：`WithBaseURL`、`WithHTTPClient`、`WithClock`、`WithRequestID`、`WithChannelNum`、关联应用 ID 和关联用户 OpenID；另外增加可注入的 `TokenProvider`。默认 Provider 负责获取并缓存平台 Token，生产环境可以注入中控缓存 Provider，避免多进程同时刷新 Token。
+根客户端保留测试和部署所需的配置项：`WithBaseURL`、`WithHTTPClient`、`WithClock`、`WithRequestID`、`WithChannelNum` 和关联应用 ID；关联用户 OpenID 不保存在客户端，而是作为需要该字段的接口的必填方法参数传入。默认 Provider 负责获取并缓存平台 Token，生产环境可以注入中控缓存 Provider，避免多进程同时刷新 Token。
 
 ## 领域边界
 

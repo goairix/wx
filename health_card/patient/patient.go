@@ -37,9 +37,10 @@ func (c *Client) VerifyRealName(req VerifyRealNameRequest) (VerifyRealNameRespon
 }
 
 // GetRegistrationInfo 使用建档授权码获取用户填写的建档信息。
-func (c *Client) GetRegistrationInfo(req GetRegistrationInfoRequest) (model.RegistrationInfo, error) {
+// 该接口要求关联应用信息，relateOpenID 必须传入当前用户在 relateAppID 下的 OpenID。
+func (c *Client) GetRegistrationInfo(req GetRegistrationInfoRequest, relateOpenID string) (model.RegistrationInfo, error) {
 	var out model.RegistrationInfo
-	err := c.caller.Call(registrationInfoPath, req, &out)
+	err := c.caller.CallWithRelated(registrationInfoPath, req, &out, relateOpenID)
 	return out, err
 }
 

@@ -82,7 +82,7 @@ func TestAppTokenFetchesAndCaches(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
-		if body.CommonIn.AppToken != "" || body.CommonIn.RelateAppID != "related-app" || body.Req.AppID != "app-id" || body.CommonIn.Sign == "" {
+		if body.CommonIn.AppToken != "" || body.CommonIn.RelateAppID != "" || body.CommonIn.RelateOpenID != "" || body.Req.AppID != "app-id" || body.CommonIn.Sign == "" {
 			t.Fatalf("unexpected request: %+v", body)
 		}
 		_, _ = io.WriteString(w, `{"commonOut":{"requestId":"rid","resultCode":0,"errMsg":"成功"},"rsp":{"appToken":"fresh-token","expiresIn":7200}}`)

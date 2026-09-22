@@ -8,6 +8,9 @@ func (f *fakeCaller) Call(path string, req interface{}, result interface{}) erro
 	f.path = path
 	return nil
 }
+func (f *fakeCaller) CallWithRelated(path string, req interface{}, result interface{}, relateOpenID string) error {
+	return f.Call(path, req, result)
+}
 func TestNotificationEndpoints(t *testing.T) {
 	f := &fakeCaller{}
 	_, _ = New(f).NotifyReferralResult(NotifyReferralResultRequest{})

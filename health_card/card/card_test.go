@@ -14,6 +14,9 @@ func (f *fakeCaller) Call(path string, req interface{}, result interface{}) erro
 	f.path, f.req = path, req
 	return json.Unmarshal([]byte(`{"healthCardId":"hc"}`), result)
 }
+func (f *fakeCaller) CallWithRelated(path string, req interface{}, result interface{}, relateOpenID string) error {
+	return f.Call(path, req, result)
+}
 
 func TestCardRegister(t *testing.T) {
 	f := &fakeCaller{}

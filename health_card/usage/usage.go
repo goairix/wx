@@ -13,9 +13,10 @@ type Client struct{ caller contracts.Caller }
 func New(caller contracts.Caller) *Client { return &Client{caller: caller} }
 
 // ReportHISData 上报 HIS 完成的一次健康卡用卡记录。
-func (c *Client) ReportHISData(req ReportHISDataRequest) (ReportHISDataResponse, error) {
+// 该接口要求关联应用信息，relateOpenID 必须传入当前用户在 relateAppID 下的 OpenID。
+func (c *Client) ReportHISData(req ReportHISDataRequest, relateOpenID string) (ReportHISDataResponse, error) {
 	var out ReportHISDataResponse
-	err := c.caller.Call(reportHISDataPath, req, &out)
+	err := c.caller.CallWithRelated(reportHISDataPath, req, &out, relateOpenID)
 	return out, err
 }
 

@@ -39,9 +39,10 @@ func (c *Client) RegisterBatch(req RegisterBatchRequest) (RegisterBatchResponse,
 }
 
 // GetByHealthCode 使用一次性健康卡授权码查询卡片信息。
-func (c *Client) GetByHealthCode(req GetByHealthCodeRequest) (model.CardInfoResponse, error) {
+// 该接口要求关联应用信息，relateOpenID 必须传入当前用户在 relateAppID 下的 OpenID。
+func (c *Client) GetByHealthCode(req GetByHealthCodeRequest, relateOpenID string) (model.CardInfoResponse, error) {
 	var out model.CardInfoResponse
-	err := c.caller.Call(byHealthCodePath, req, &out)
+	err := c.caller.CallWithRelated(byHealthCodePath, req, &out, relateOpenID)
 	return out, err
 }
 
@@ -88,9 +89,10 @@ func (c *Client) GetByID(req GetByIDRequest) (GetByIDResponse, error) {
 }
 
 // GetDynamicQRCode 根据卡片和证件信息生成动态或静态二维码。
-func (c *Client) GetDynamicQRCode(req GetDynamicQRCodeRequest) (GetDynamicQRCodeResponse, error) {
+// 该接口要求关联应用信息，relateOpenID 必须传入当前用户在 relateAppID 下的 OpenID。
+func (c *Client) GetDynamicQRCode(req GetDynamicQRCodeRequest, relateOpenID string) (GetDynamicQRCodeResponse, error) {
 	var out GetDynamicQRCodeResponse
-	err := c.caller.Call(dynamicQRCodePath, req, &out)
+	err := c.caller.CallWithRelated(dynamicQRCodePath, req, &out, relateOpenID)
 	return out, err
 }
 

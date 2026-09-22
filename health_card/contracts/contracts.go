@@ -4,4 +4,5 @@ package contracts
 // 根 health_card.Client 实现该接口，领域包因此可以独立使用和测试。
 type Caller interface {
 	Call(path string, req interface{}, result interface{}) error
+	CallWithRelated(path string, req interface{}, result interface{}, relateOpenID string) error
 }

@@ -32,29 +32,33 @@ func (c *Client) RegisterFaceOrder(req RegisterFaceOrderRequest) (RegisterFaceOr
 }
 
 // CreateUniformVerifyOrder 创建统一实人认证订单并返回前端跳转地址。
-func (c *Client) CreateUniformVerifyOrder(req CreateUniformVerifyOrderRequest) (CreateUniformVerifyOrderResponse, error) {
+// 该接口要求关联应用信息，relateOpenID 必须传入当前用户在 relateAppID 下的 OpenID。
+func (c *Client) CreateUniformVerifyOrder(req CreateUniformVerifyOrderRequest, relateOpenID string) (CreateUniformVerifyOrderResponse, error) {
 	var out CreateUniformVerifyOrderResponse
-	err := c.caller.Call(uniformOrderPath, req, &out)
+	err := c.caller.CallWithRelated(uniformOrderPath, req, &out, relateOpenID)
 	return out, err
 }
 
 // CheckUniformVerifyResult 使用前端回调结果查询统一认证是否成功。
-func (c *Client) CheckUniformVerifyResult(req CheckUniformVerifyResultRequest) (CheckUniformVerifyResultResponse, error) {
+// 该接口要求关联应用信息，relateOpenID 必须传入当前用户在 relateAppID 下的 OpenID。
+func (c *Client) CheckUniformVerifyResult(req CheckUniformVerifyResultRequest, relateOpenID string) (CheckUniformVerifyResultResponse, error) {
 	var out CheckUniformVerifyResultResponse
-	err := c.caller.Call(uniformResultPath, req, &out)
+	err := c.caller.CallWithRelated(uniformResultPath, req, &out, relateOpenID)
 	return out, err
 }
 
 // GetRealPersonUserInfo 获取业务自有人脸认证所需的用户身份信息。
-func (c *Client) GetRealPersonUserInfo(req GetRealPersonUserInfoRequest) (RealPersonUserInfo, error) {
+// 该接口要求关联应用信息，relateOpenID 必须传入当前用户在 relateAppID 下的 OpenID。
+func (c *Client) GetRealPersonUserInfo(req GetRealPersonUserInfoRequest, relateOpenID string) (RealPersonUserInfo, error) {
 	var out RealPersonUserInfo
-	err := c.caller.Call(userInfoPath, req, &out)
+	err := c.caller.CallWithRelated(userInfoPath, req, &out, relateOpenID)
 	return out, err
 }
 
 // NotifyRealPersonVerifyResult 将业务自有人脸认证结果通知腾讯平台。
-func (c *Client) NotifyRealPersonVerifyResult(req NotifyRealPersonVerifyResultRequest) (NotifyRealPersonVerifyResultResponse, error) {
+// 该接口要求关联应用信息，relateOpenID 必须传入当前用户在 relateAppID 下的 OpenID。
+func (c *Client) NotifyRealPersonVerifyResult(req NotifyRealPersonVerifyResultRequest, relateOpenID string) (NotifyRealPersonVerifyResultResponse, error) {
 	var out NotifyRealPersonVerifyResultResponse
-	err := c.caller.Call(resultNoticePath, req, &out)
+	err := c.caller.CallWithRelated(resultNoticePath, req, &out, relateOpenID)
 	return out, err
 }
