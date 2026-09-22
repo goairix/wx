@@ -14,6 +14,7 @@ type Department struct {
 	account contracts.AccountInterface
 }
 
+// NewDepartment 创建 Department 实例。
 func NewDepartment(account contracts.AccountInterface) *Department {
 	return &Department{account: account}
 }

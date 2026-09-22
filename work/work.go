@@ -20,6 +20,7 @@ type Work struct {
 	option *option
 }
 
+// New 创建企业微信客户端。
 func New(corpId, secret, token, aesKey string, opts ...Option) *Work {
 	c := &config{
 		corpId: corpId,

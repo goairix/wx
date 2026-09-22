@@ -14,6 +14,7 @@ type Tag struct {
 	account contracts.AccountInterface
 }
 
+// NewTag 创建 Tag 实例。
 func NewTag(account contracts.AccountInterface) *Tag {
 	return &Tag{account: account}
 }

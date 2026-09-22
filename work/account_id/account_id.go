@@ -14,6 +14,7 @@ type AccountId struct {
 	account contracts.AccountInterface
 }
 
+// New 创建账号 ID 转换客户端。
 func New(account contracts.AccountInterface) *AccountId {
 	return &AccountId{account: account}
 }

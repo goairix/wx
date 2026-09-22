@@ -1,6 +1,24 @@
-### 企业微信
+# 企业微信 SDK
 
-企业微信SDK使用手册
+企业微信（WeCom）服务端 SDK 使用手册。SDK 按业务拆分为多个模块，所有模块都从同一个 `work.Work` 实例获取。
+
+## 模块导航
+
+| 模块 | README | 入口 | 能力 |
+| --- | --- | --- | --- |
+| 核心 | [work](.) | `work.New` | 账号、token、缓存、回调服务 |
+| 通讯录 | [contact](contact/) | `w.Contact()` | 成员、部门、标签、异步导入导出 |
+| 客户联系 | [customer](customer/) | `w.Customer()` | 外部联系人、客户标签、客户群、规则 |
+| 应用消息 | [message](message/) | `w.Message()` | 应用消息、群聊、撤回 |
+| 客服 | [kf](kf/) | `w.Kf()` | 客服账号、接待人员、客服消息 |
+| 素材 | [media](media/) | `w.Media()` | 临时素材和永久图片 |
+| 身份验证 | [auth](auth/) | `w.Auth()` | OAuth、扫码登录、TFA |
+| 账号 ID | [account_id](account_id/) | `w.AccountId()` | userid/openid/open_userid 转换 |
+| 小程序 | [mini_program](mini_program/) | `w.MiniProgram()` | 小程序登录 |
+| HTTP | [http](http/) | `work/http` | SDK 内部 HTTP 请求封装 |
+
+每个模块的 README 都包含职责、主要 API、参数说明和可复制的最小示例。
+
 
 ## 安装
 

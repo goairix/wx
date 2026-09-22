@@ -23,6 +23,7 @@ type Auth struct {
 	agentId     string
 }
 
+// NewAuth 创建 Auth 实例。
 func NewAuth(account contracts.AccountInterface) *Auth {
 	return &Auth{account: account, state: "state", scope: "snsapi_base"}
 }

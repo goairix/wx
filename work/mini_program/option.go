@@ -24,6 +24,7 @@ type option struct {
 	locker         lock.Locker
 }
 
+// Option 配置客户端使用的缓存、锁和 access_token 提供者。
 type Option func(*option)
 
 // WithCache 设置缓存

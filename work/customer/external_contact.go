@@ -14,6 +14,7 @@ type ExternalContact struct {
 	account contracts.AccountInterface
 }
 
+// NewExternalContact 创建 ExternalContact 实例。
 func NewExternalContact(account contracts.AccountInterface) *ExternalContact {
 	return &ExternalContact{account: account}
 }

@@ -14,6 +14,7 @@ type Strategy struct {
 	account contracts.AccountInterface
 }
 
+// NewStrategy 创建 Strategy 实例。
 func NewStrategy(account contracts.AccountInterface) *Strategy {
 	return &Strategy{account: account}
 }

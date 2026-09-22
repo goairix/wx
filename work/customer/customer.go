@@ -7,6 +7,7 @@ type Customer struct {
 	account contracts.AccountInterface
 }
 
+// NewCustomer 创建 Customer 实例。
 func NewCustomer(account contracts.AccountInterface) *Customer {
 	return &Customer{account: account}
 }

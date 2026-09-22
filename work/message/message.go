@@ -14,6 +14,7 @@ type Message struct {
 	account contracts.AccountInterface
 }
 
+// NewMessage 创建 Message 实例。
 func NewMessage(account contracts.AccountInterface) *Message {
 	return &Message{account: account}
 }

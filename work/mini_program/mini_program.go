@@ -12,6 +12,7 @@ type MiniProgram struct {
 	option *option
 }
 
+// New 创建企业微信小程序客户端。
 func New(corpId, secret, token, aesKey string, opts ...Option) *MiniProgram {
 	c := &config{
 		corpId: corpId,

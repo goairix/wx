@@ -14,6 +14,7 @@ type Servicer struct {
 	account contracts.AccountInterface
 }
 
+// NewServicer 创建 Servicer 实例。
 func NewServicer(account contracts.AccountInterface) *Servicer {
 	return &Servicer{account: account}
 }

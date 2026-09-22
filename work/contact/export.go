@@ -17,6 +17,7 @@ type Export struct {
 	account contracts.AccountInterface
 }
 
+// NewExport 创建 Export 实例。
 func NewExport(account contracts.AccountInterface, token, aesKey string) *Export {
 	return &Export{
 		token:   token,

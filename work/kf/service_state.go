@@ -14,6 +14,7 @@ type ServiceState struct {
 	account contracts.AccountInterface
 }
 
+// NewServiceState 创建 ServiceState 实例。
 func NewServiceState(account contracts.AccountInterface) *ServiceState {
 	return &ServiceState{account: account}
 }

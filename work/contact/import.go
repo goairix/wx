@@ -14,6 +14,7 @@ type Import struct {
 	account contracts.AccountInterface
 }
 
+// NewImport 创建 Import 实例。
 func NewImport(account contracts.AccountInterface) *Import {
 	return &Import{account: account}
 }

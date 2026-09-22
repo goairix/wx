@@ -14,6 +14,7 @@ type Tfa struct {
 	account contracts.AccountInterface
 }
 
+// NewTfa 创建 Tfa 实例。
 func NewTfa(account contracts.AccountInterface) *Tfa {
 	return &Tfa{account: account}
 }

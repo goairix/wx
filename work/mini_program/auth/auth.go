@@ -22,10 +22,12 @@ type Session struct {
 	SessionKey string `json:"session_key"`
 }
 
+// New 创建小程序登录客户端。
 func New(account contracts.AccountInterface) *Auth {
 	return &Auth{account: account}
 }
 
+// Session 使用小程序临时登录凭证换取会话信息。
 func (auth *Auth) Session(code string) (Session, error) {
 	apiUrl := auth.getCodeUrl(code)
 	res, err := http.Get(apiUrl)

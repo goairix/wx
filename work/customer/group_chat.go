@@ -14,6 +14,7 @@ type GroupChat struct {
 	account contracts.AccountInterface
 }
 
+// NewGroupChat 创建 GroupChat 实例。
 func NewGroupChat(account contracts.AccountInterface) *GroupChat {
 	return &GroupChat{account: account}
 }

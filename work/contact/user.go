@@ -14,6 +14,7 @@ type User struct {
 	account contracts.AccountInterface
 }
 
+// NewUser 创建 User 实例。
 func NewUser(account contracts.AccountInterface) *User {
 	return &User{account: account}
 }

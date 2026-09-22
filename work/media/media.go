@@ -14,6 +14,7 @@ type Media struct {
 	account contracts.AccountInterface
 }
 
+// NewMedia 创建 Media 实例。
 func NewMedia(account contracts.AccountInterface) *Media {
 	return &Media{account: account}
 }

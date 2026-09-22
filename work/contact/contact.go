@@ -9,6 +9,7 @@ type Contact struct {
 	account contracts.AccountInterface
 }
 
+// New 创建通讯录客户端。
 func New(account contracts.AccountInterface, token, aesKey string) *Contact {
 	return &Contact{
 		token:   token,

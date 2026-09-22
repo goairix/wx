@@ -7,6 +7,7 @@ type Kf struct {
 	account contracts.AccountInterface
 }
 
+// NewKf 创建 Kf 实例。
 func NewKf(account contracts.AccountInterface) *Kf {
 	return &Kf{account: account}
 }

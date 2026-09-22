@@ -10,6 +10,7 @@ import (
 	"github.com/goairix/wx/work/http"
 )
 
+// AccessToken 获取当前企业微信账号的 access_token。
 func (w *Work) AccessToken() (contracts.AccessToken, error) {
 	return w.accessToken(false)
 }
@@ -93,6 +94,7 @@ func (w *Work) refreshAccessToken() (contracts.AccessToken, error) {
 	}, nil
 }
 
+// AccessTokenCacheKey 返回当前账号 access_token 的缓存键。
 func (w *Work) AccessTokenCacheKey() string {
 	return fmt.Sprintf("%s%s.%s", w.option.cacheKeyPrefix, "access_token", w.config.corpId)
 }

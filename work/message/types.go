@@ -26,6 +26,7 @@ type Text struct {
 	MentionedMobileList []string `json:"mentioned_mobile_list,omitempty"`
 }
 
+// MsgType 返回企业微信消息类型标识。
 func (t *Text) MsgType() string { return "text" }
 
 // Image 图片消息
@@ -33,6 +34,7 @@ type Image struct {
 	MediaId string `json:"media_id"`
 }
 
+// MsgType 返回企业微信消息类型标识。
 func (i *Image) MsgType() string { return "image" }
 
 // Voice 语音消息
@@ -40,6 +42,7 @@ type Voice struct {
 	MediaId string `json:"media_id"`
 }
 
+// MsgType 返回企业微信消息类型标识。
 func (v *Voice) MsgType() string { return "voice" }
 
 // Video 视频消息
@@ -49,6 +52,7 @@ type Video struct {
 	Description string `json:"description,omitempty"`
 }
 
+// MsgType 返回企业微信消息类型标识。
 func (v *Video) MsgType() string { return "video" }
 
 // File 文件消息
@@ -56,6 +60,7 @@ type File struct {
 	MediaId string `json:"media_id"`
 }
 
+// MsgType 返回企业微信消息类型标识。
 func (f *File) MsgType() string { return "file" }
 
 // TextCard 文本卡片消息
@@ -66,6 +71,7 @@ type TextCard struct {
 	BtnTxt      string `json:"btntxt,omitempty"`
 }
 
+// MsgType 返回企业微信消息类型标识。
 func (tc *TextCard) MsgType() string { return "textcard" }
 
 // NewsArticle 图文消息-文章
@@ -83,6 +89,7 @@ type News struct {
 	Articles []NewsArticle `json:"articles"`
 }
 
+// MsgType 返回企业微信消息类型标识。
 func (n *News) MsgType() string { return "news" }
 
 // MpNewsArticle mpnews图文消息-文章
@@ -100,6 +107,7 @@ type MpNews struct {
 	Articles []MpNewsArticle `json:"articles"`
 }
 
+// MsgType 返回企业微信消息类型标识。
 func (m *MpNews) MsgType() string { return "mpnews" }
 
 // Markdown markdown消息
@@ -107,6 +115,7 @@ type Markdown struct {
 	Content string `json:"content"`
 }
 
+// MsgType 返回企业微信消息类型标识。
 func (md *Markdown) MsgType() string { return "markdown" }
 
 // MiniProgramNotice 小程序通知消息
@@ -119,6 +128,7 @@ type MiniProgramNotice struct {
 	ContentItem       []MiniProgramNoticeItem `json:"content_item,omitempty"`
 }
 
+// MsgType 返回企业微信消息类型标识。
 func (mp *MiniProgramNotice) MsgType() string { return "miniprogram_notice" }
 
 // MiniProgramNoticeItem 小程序通知消息-内容项
@@ -150,6 +160,7 @@ type TemplateCard struct {
 	VerticalContentList   []TemplateCardVerticalContent   `json:"vertical_content_list,omitempty"`
 }
 
+// MsgType 返回企业微信消息类型标识。
 func (tc *TemplateCard) MsgType() string { return "template_card" }
 
 // TemplateCardSource 模版卡片-来源
