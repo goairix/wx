@@ -23,7 +23,15 @@ type Hook interface {
 type HookFunc func(Event)
 
 // OnRequest invokes f for a request event.
-func (f HookFunc) OnRequest(event Event) { f(event) }
+func (f HookFunc) OnRequest(event Event) {
+	if f != nil {
+		f(event)
+	}
+}
 
 // OnResponse invokes f for a response event.
-func (f HookFunc) OnResponse(event Event) { f(event) }
+func (f HookFunc) OnResponse(event Event) {
+	if f != nil {
+		f(event)
+	}
+}
