@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/goairix/wx/health_card/anti_fraud"
@@ -19,6 +18,8 @@ import (
 	"github.com/goairix/wx/health_card/usage"
 	"github.com/goairix/wx/health_card/verification"
 	kernelContracts "github.com/goairix/wx/kernel/contracts"
+	"github.com/goairix/wx/support/cache"
+	"github.com/goairix/wx/support/lock"
 )
 
 const defaultBaseURL = "https://p-healthopen.tengmed.com"
@@ -28,20 +29,21 @@ const getAppTokenPath = "/rest/auth/HealthCard/HealthOpenAuth/AuthObj/getAppToke
 // 它负责公共参数组装、请求签名、appToken 管理、HTTP 调用和统一错误转换，
 // 业务接口通过 Card、Patient 等领域入口访问。
 type Client struct {
-	appID         string
-	appSecret     string
-	appToken      string
-	tokenUntil    time.Time
-	hospitalID    string
-	baseURL       string
-	channelNum    int
-	relateAppID   string
-	relateOpenID  string
-	httpClient    *http.Client
-	now           func() time.Time
-	requestID     func() string
-	tokenProvider kernelContracts.AccessTokenProvider
-	tokenMu       sync.Mutex
+	appID               string
+	appSecret           string
+	appToken            string
+	hospitalID          string
+	baseURL             string
+	channelNum          int
+	relateAppID         string
+	relateOpenID        string
+	httpClient          *http.Client
+	now                 func() time.Time
+	requestID           func() string
+	tokenProvider       kernelContracts.AccessTokenProvider
+	tokenCache          cache.Cache
+	tokenCacheKeyPrefix string
+	tokenLocker         lock.Locker
 }
 
 // Card 返回健康卡注册、查询和展码领域客户端。
@@ -134,19 +136,30 @@ func WithRequestID(requestID func() string) Option {
 // New 创建腾讯电子健康卡根客户端。
 func New(appID, appSecret, hospitalID string, opts ...Option) *Client {
 	client := &Client{
-		appID:      appID,
-		appSecret:  appSecret,
-		hospitalID: hospitalID,
-		baseURL:    defaultBaseURL,
-		channelNum: 0,
-		httpClient: http.DefaultClient,
-		now:        time.Now,
-		requestID:  newRequestID,
+		appID:               appID,
+		appSecret:           appSecret,
+		hospitalID:          hospitalID,
+		baseURL:             defaultBaseURL,
+		channelNum:          0,
+		httpClient:          http.DefaultClient,
+		now:                 time.Now,
+		requestID:           newRequestID,
+		tokenCacheKeyPrefix: cache.DefaultCacheKeyPrefix,
 	}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(client)
 		}
+	}
+	if client.tokenCache == nil {
+		client.tokenCache = cache.NewMemoryCache()
+	}
+	if client.tokenLocker == nil {
+		client.tokenLocker = &lock.Mutex{}
+	}
+	if client.appToken != "" {
+		// WithAppToken 表示调用方已经确认该 token 可用，因此按不过期凭证预置到缓存。
+		_ = client.writeCachedAppToken(client.appToken, 0)
 	}
 	return client
 }
@@ -163,14 +176,18 @@ func (client *Client) AppToken() (string, error) {
 		if token.AccessToken == "" {
 			return "", fmt.Errorf("health card app token response is empty")
 		}
-		client.appToken = token.AccessToken
 		return token.AccessToken, nil
 	}
-	client.tokenMu.Lock()
-	defer client.tokenMu.Unlock()
+	if token, ok := client.readCachedAppToken(); ok {
+		client.appToken = token
+		return token, nil
+	}
+	client.tokenLocker.Lock()
+	defer client.tokenLocker.Unlock()
 
-	if client.appToken != "" && (client.tokenUntil.IsZero() || client.now().Before(client.tokenUntil)) {
-		return client.appToken, nil
+	if token, ok := client.readCachedAppToken(); ok {
+		client.appToken = token
+		return token, nil
 	}
 
 	var result AppTokenResponse
@@ -183,12 +200,8 @@ func (client *Client) AppToken() (string, error) {
 		return "", fmt.Errorf("health card app token response is empty")
 	}
 	client.appToken = result.AppToken
-	if result.ExpiresIn > 0 {
-		refreshAfter := result.ExpiresIn - 60
-		if refreshAfter <= 0 {
-			refreshAfter = result.ExpiresIn
-		}
-		client.tokenUntil = client.now().Add(time.Duration(refreshAfter) * time.Second)
+	if err := client.writeCachedAppToken(result.AppToken, result.ExpiresIn); err != nil {
+		return "", err
 	}
 	return client.appToken, nil
 }
@@ -202,14 +215,13 @@ func newRequestID() string {
 }
 
 func (client *Client) do(path string, req interface{}, result interface{}) error {
+	appToken := ""
 	if path != getAppTokenPath {
-		if _, err := client.AppToken(); err != nil {
+		var err error
+		appToken, err = client.AppToken()
+		if err != nil {
 			return err
 		}
-	}
-	appToken := client.appToken
-	if path == getAppTokenPath {
-		appToken = ""
 	}
 	commonIn := CommonIn{
 		AppToken:     appToken,

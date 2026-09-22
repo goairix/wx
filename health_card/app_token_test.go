@@ -2,12 +2,69 @@ package health_card
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/goairix/wx/support/cache"
+	"github.com/goairix/wx/support/lock"
 )
+
+func TestAppTokenCacheOptions(t *testing.T) {
+	client := New("app-id", "secret", "hospital", WithCache(cache.NewMemoryCache()), WithCacheKeyPrefix("custom."), WithLocker(&lock.Mutex{}))
+	if got := client.AppTokenCacheKey(); got != "custom.health_card_app_token.app-id" {
+		t.Fatalf("cache key = %q", got)
+	}
+}
+
+func TestAppTokenCanBeSeededIntoCache(t *testing.T) {
+	c := cache.NewMemoryCache()
+	client := New("app-id", "secret", "hospital", WithCache(c), WithAppToken("seed-token"))
+	other := New("app-id", "secret", "hospital", WithCache(c), WithBaseURL("http://invalid.example"))
+	got, err := other.AppToken()
+	if err != nil || got != "seed-token" {
+		t.Fatalf("token=%q err=%v", got, err)
+	}
+	if !c.IsExist(client.AppTokenCacheKey()) {
+		t.Fatal("seed token was not written to cache")
+	}
+}
+
+func TestAppTokenConcurrentRefreshUsesOneRequest(t *testing.T) {
+	var calls int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		time.Sleep(20 * time.Millisecond)
+		_, _ = io.WriteString(w, `{"commonOut":{"requestId":"rid","resultCode":0},"rsp":{"appToken":"shared-token","expiresIn":7200}}`)
+	}))
+	defer server.Close()
+
+	client := New("app-id", "secret", "hospital", WithBaseURL(server.URL), WithRequestID(func() string { return "rid" }))
+	var wg sync.WaitGroup
+	errs := make(chan error, 8)
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if got, err := client.AppToken(); err != nil || got != "shared-token" {
+				errs <- fmt.Errorf("token=%q err=%v", got, err)
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Fatalf("token requests = %d, want 1", got)
+	}
+}
 
 func TestAppTokenFetchesAndCaches(t *testing.T) {
 	calls := 0
