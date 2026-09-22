@@ -1,105 +1,42 @@
-# 腾讯电子健康卡
+# 腾讯电子健康卡 SDK
 
-`health_card` 封装腾讯电子健康卡开放平台中小程序/公众号建档、查询场景实人验证和用卡数据上报所需的服务端接口。
-
-小程序插件或公众号流程先返回一次性 `wechatCode`，业务后端再使用本包调用腾讯接口。`AppSecret`、`AppToken` 和健康卡个人信息都必须只保留在服务端。
+本包按领域封装腾讯电子健康卡开放平台接口。根客户端负责 `appToken` 自动获取、公共参数、签名、HTTP 和错误处理；业务按 `Card()`、`Patient()` 等入口使用领域接口。
 
 ```go
-package main
+client := health_card.New(appID, appSecret, hospitalID)
+cards := client.Card()
+result, err := cards.Register(card.RegisterRequest{
+	WechatCode: wechatCode, Name: "张三", Gender: "男", Nation: "汉族",
+	Birthday: "1998-09-08", IDNumber: idNumber, IDType: "01", Phone1: phone,
+})
+```
 
-import (
-	"log"
+`wechatCode`、`healthCode`、`regInfoCode` 等一次性编码由前端小程序插件或公众号流程取得，再传给业务后端；`appToken` 不需要业务手工填写，SDK 会用电子健康卡平台的 `appID/appSecret` 自动获取并在内存缓存。`appSecret`、个人信息和一次性编码不能下发到前端或写入日志。
 
-	"github.com/goairix/wx/health_card"
+## 领域包
+
+| 入口 | 主要服务 | 说明 |
+| --- | --- | --- |
+| `client.Card()` | 99、100、102、104、140、142、143、145、158、161 | 注册、查询、绑定、二维码和卡 ID |
+| `client.Patient()` | 235、236、287、290、291、293、310、312 | 城市支持、实名就诊人、建档及老患者流程 |
+| `client.Verification()` | 103、144、169、170、303、304 | 人脸、实人认证和结果通知 |
+| `client.Usage()` | 141、199、237、294 | HIS、应用、实名患者及扫码用卡上报 |
+| `client.Device()` | 155、156 | 自助机扫码授权 |
+| `client.Notification()` | 159、245、261 | 入站扫码通知、转诊和就医记录通知 |
+| `client.AntiFraud()` | 250 | 预约防黄牛校验及取消预约回调 |
+
+每个领域包的 README 都列出完整接口、服务 ID、关键参数、出站/入站边界和调用示例。
+
+## 配置与错误
+
+```go
+client := health_card.New(appID, appSecret, hospitalID,
+	health_card.WithChannelNum(0),
+	health_card.WithRelatedAppID(relatedAppID),
+	health_card.WithRelatedOpenID(relatedOpenID),
 )
-
-func main() {
-	client := health_card.New(
-		"health-platform-app-id",
-		"health-platform-app-secret",
-		"hospital-id",
-	)
-
-	card, err := client.RegisterHealthCard(health_card.RegisterHealthCardRequest{
-		WechatCode: "code-from-mini-program-plugin",
-		Name:       "张三",
-		Gender:     "男",
-		Nation:     "汉族",
-		Birthday:   "1998-09-08",
-		IDNumber:   "身份证号",
-		IDType:     "01",
-		Phone1:     "13800000000",
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Println(card.HealthCardID)
-}
 ```
 
-## 接口
+测试环境可使用 `WithBaseURL`、`WithHTTPClient`、`WithClock`、`WithRequestID`；已有有效凭证时可用 `WithAppToken`。平台返回非零 `resultCode` 时，方法返回 `*health_card.APIError`。
 
-- `CreateBindCardAuthorization`：使用 `wechatCode` 获取绑卡/建档授权页地址。老患者升级时将 `PatientType` 设为 `1`，并在回调地址中携带业务自己的患者 ID。
-- `SubmitHealthCardRegistration`：用户确认建卡信息后，提交 `authCode` 和建卡信息，获取身份验证页地址。
-- `RegisterHealthCard`：使用插件返回的 `wechatCode` 直接注册新卡，适用于原有直接建卡流程。
-- `GetHealthCardByHealthCode`：使用插件返回的 `healthCode` 获取已有卡信息。
-- `GetRegInfoByCode`：使用绑卡组件异常场景返回的 `regInfoCode` 获取建档表单信息。
-- `CreateRealPersonVerifyOrder`：查询报告等敏感场景创建实人验证订单并获取前端跳转地址。
-- `CheckRealPersonVerifyResult`：使用回调返回的 `registerOrderId` 查询实人验证结果，并获取可能返回的健康卡号。
-- `GetRealPersonUserInfo`、`NotifyRealPersonVerifyResult`：服务商自有人脸认证页需要的用户信息获取和认证结果通知接口；微信人脸核身本身由业务接入微信侧能力。
-- `ReportHISData`：将 HIS 完成的一次健康卡用卡数据上报给平台。前端用卡数据检测脚本应先调用业务后端，由业务后端调用此方法。
-
-### 建档场景示例
-
-前端获取 `wechatCode` 后交给业务后端：
-
-```go
-authorization, err := client.CreateBindCardAuthorization(health_card.CreateBindCardAuthorizationRequest{
-	WechatCode:             wechatCode,
-	SuccessRedirectURL:     "https://example.com/health-card/success?healthCode=${healthCode}",
-	FailRedirectURL:        "https://example.com/health-card/fail?regInfoCode=${regInfoCode}",
-	UserFormPageURL:        "https://example.com/health-card/form?authCode=${authCode}",
-	FaceURL:                "https://example.com/health-card/face",
-	VerifyFailRedirectURL:  "https://example.com/health-card/verify-fail",
-})
-if err != nil {
-	// handle error
-}
-// 将 authorization.BindCardURL 返回给前端跳转。
-```
-
-腾讯回调返回 `healthCode` 后，后端调用 `GetHealthCardByHealthCode`；返回 `regInfoCode` 时调用 `GetRegInfoByCode`。这些一次性编码应在后端及时消费，不要写入日志或下发给无关客户端。
-
-### 查询场景示例
-
-后端创建验证订单，把 `VerifyURL` 返回给前端：
-
-```go
-order, err := client.CreateRealPersonVerifyOrder(health_card.CreateRealPersonVerifyOrderRequest{
-	CardType:                 "01",
-	IDCard:                   idCard,
-	Name:                     name,
-	WechatCode:               wechatCode,
-	Scene:                    "0101081",
-	UseCardType:              "11",
-	VerifySuccessRedirectURL: "https://example.com/report/verify-success?registerOrderId=${registerOrderId}",
-	VerifyFailRedirectURL:    "https://example.com/report/verify-fail",
-	FaceURL:                  "https://example.com/report/face",
-})
-if err != nil {
-	// handle error
-}
-// 将 order.VerifyURL 返回给前端，并保存 order.VerifyOrderID。
-```
-
-验证成功回调中的 `registerOrderId` 作为 `VerifyResult`，与保存的 `VerifyOrderID` 一起传给 `CheckRealPersonVerifyResult`。
-
-### 管理页和展码页
-
-腾讯标准 H5 展码页或小程序展码插件由前端直接接入，SDK 不需要为标准组件新增后端接口。若业务自行开发展码页，需要另行接入腾讯的二维码接口并遵守健康卡卡面规范；这不属于当前包的标准流程。
-
-首次调用业务接口时，客户端会使用电子健康卡开放平台分配的 `appId` 和 `appSecret` 自动调用 `getAppToken` 获取 `appToken`，并在内存中缓存约 7200 秒。不要把这里的 `appId` 与微信小程序 AppID 混淆，也不要把 `appSecret` 放到小程序端。
-
-如果应用已经自行获取了 `appToken`，可以通过 `WithAppToken` 注入；否则不需要手动填写 `appToken`。`appToken` 过期后客户端会自动重新获取。
-
-`New` 的可选项包括 `WithChannelNum`、`WithRelatedAppID` 和 `WithRelatedOpenID`。测试时可以使用 `WithBaseURL`、`WithHTTPClient`、`WithClock` 和 `WithRequestID`。
+标准健康卡管理页和展码页由腾讯前端组件承载；如果业务自建页面，应使用 `Card()` 中的二维码和查询接口，并由后端完成签名请求。

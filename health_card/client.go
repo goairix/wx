@@ -10,6 +10,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/goairix/wx/health_card/anti_fraud"
+	"github.com/goairix/wx/health_card/card"
+	"github.com/goairix/wx/health_card/device"
+	"github.com/goairix/wx/health_card/notification"
+	"github.com/goairix/wx/health_card/patient"
+	"github.com/goairix/wx/health_card/usage"
+	"github.com/goairix/wx/health_card/verification"
 )
 
 const defaultBaseURL = "https://p-healthopen.tengmed.com"
@@ -31,6 +39,27 @@ type Client struct {
 	requestID    func() string
 	tokenMu      sync.Mutex
 }
+
+// Card 返回健康卡注册、查询和展码领域客户端。
+func (client *Client) Card() *card.Client { return card.New(client) }
+
+// Patient 返回建档和实名就诊人领域客户端。
+func (client *Client) Patient() *patient.Client { return patient.New(client) }
+
+// Verification 返回人脸及实人认证领域客户端。
+func (client *Client) Verification() *verification.Client { return verification.New(client) }
+
+// Usage 返回用卡数据上报领域客户端。
+func (client *Client) Usage() *usage.Client { return usage.New(client) }
+
+// Device 返回自助机扫码设备领域客户端。
+func (client *Client) Device() *device.Client { return device.New(client) }
+
+// Notification 返回平台通知领域客户端。
+func (client *Client) Notification() *notification.Client { return notification.New(client) }
+
+// AntiFraud 返回预约防黄牛领域客户端。
+func (client *Client) AntiFraud() *anti_fraud.Client { return anti_fraud.New(client) }
 
 // Option customizes a Client.
 type Option func(*Client)
