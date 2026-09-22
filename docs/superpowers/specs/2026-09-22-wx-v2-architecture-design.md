@@ -172,8 +172,8 @@ type Request struct {
     Path      string
     Query     url.Values
     Header    http.Header
-    Body      any
-    Result    any
+    Body      interface{}
+    Result    interface{}
 }
 ```
 
