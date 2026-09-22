@@ -1,16 +1,16 @@
-# Tencent Health Card Full API Design
+# 腾讯电子健康卡完整接口设计
 
-## Goal
+## 目标
 
-Rebuild the `health_card` package around all 33 API entries shown in Tencent Health Open Platform service 139, using the repository's existing domain-package style. Compatibility with the current root-level methods is explicitly not required; the new API is type-safe, domain-oriented, and organized for future platform additions.
+围绕腾讯健康开放平台服务 139 页面列出的 33 项 API，重新设计 `health_card` 包，并采用仓库现有的领域子包风格。按照已确认的方案，本次不保留当前根包方法的兼容层；新 API 以强类型、领域划分和便于扩展为优先。
 
-## Source inventory
+## 接口清单
 
-The service-139 API list was inspected in the Tencent Open Platform browser page. The entries and target modules are:
+以下清单来自腾讯健康开放平台网页中的服务 139 API 目录：
 
-| Service | Tencent operation | Module | Proposed method |
+| 服务 ID | 腾讯操作名 | 目标模块 | 拟提供的方法 |
 | ---: | --- | --- | --- |
-| 139 | `getAppToken` | root/auth | `Client.AppToken` |
+| 139 | `getAppToken` | 根包/auth | `Client.AppToken` |
 | 99 | `registerHealthCard` | card | `Register` |
 | 100 | `getHealthCardByHealthCode` | card | `GetByHealthCode` |
 | 102 | `registerBatchHealthCard` | card | `RegisterBatch` |
@@ -25,11 +25,11 @@ The service-139 API list was inspected in the Tencent Open Platform browser page
 | 155 | `ssmGenQrCode` | device | `CreateAuthorizationQRCode` |
 | 156 | `ssmQueryQrCodeResult` | device | `QueryAuthorizationQRCode` |
 | 158 | `getHealthCardByHealthCardId` | card | `GetByID` |
-| 159 | partner callback payload | notification | `ParseAuthorizationNotice` |
+| 159 | 合作方回调数据 | notification | `ParseAuthorizationNotice` |
 | 161 | `getDynamicQRCode` | card | `GetDynamicQRCode` |
 | 169 | `registerUniformVerifyOrder` | verification | `CreateUniformVerifyOrder` |
 | 170 | `checkUniformVerifyResult` | verification | `CheckUniformVerifyResult` |
-| 199 | application usage via `reportHISData` | usage | `ReportApplicationData` |
+| 199 | 通过 `reportHISData` 上报应用用卡数据 | usage | `ReportApplicationData` |
 | 235 | `getThirdPartyPlatformInfo` | patient | `GetCitySupport` |
 | 236 | `verifyRealNamePatient` | patient | `VerifyRealName` |
 | 237 | `reportRealNamePatientData` | usage | `ReportRealNamePatientData` |
@@ -44,18 +44,18 @@ The service-139 API list was inspected in the Tencent Open Platform browser page
 | 303 | `getOrderInfoByOrderId` | verification | `GetRealPersonUserInfo` |
 | 304 | `registerRealPersonAuthOrder` | verification | `NotifyRealPersonVerifyResult` |
 
-The two usage entries 141 and 199 intentionally share the Tencent endpoint but expose distinct typed methods: the former models ordinary HIS card usage and the latter models application/service usage fields. Service 159 is not a Tencent outbound API; Tencent calls the provider URL supplied to service 155, so the SDK only provides a parser for its callback payload.
+服务 141 和 199 在腾讯侧使用同一个 `reportHISData` 地址，但业务含义和字段不同，因此 SDK 提供两个不同的强类型方法。服务 159 不是腾讯出站 API，而是腾讯调用服务商在服务 155 中提供的回调地址，所以 SDK 只提供回调数据解析器，不主动发起 HTTP 请求。
 
-## Package architecture
+## 包结构
 
-The root package owns transport concerns only:
+根包只负责公共传输能力：
 
 ```text
 health_card/
-  client.go       # Client, options, appToken cache, Caller, Call
-  common.go       # commonIn/commonOut, APIError, request envelope
-  signature.go    # Tencent signing algorithm
-  types.go        # shared card, patient, child, and code structures
+  client.go       # Client、配置项、appToken 缓存、Caller、Call
+  common.go       # commonIn/commonOut、APIError、请求封装
+  signature.go    # 腾讯签名算法
+  types.go        # 共享的卡片、患者、儿童和授权码结构
   card/
   patient/
   verification/
@@ -65,7 +65,7 @@ health_card/
   anti_fraud/
 ```
 
-Each domain package follows the repository convention:
+各领域子包遵循仓库现有的 `New(...)` 加领域方法风格：
 
 ```go
 client := health_card.New(appID, appSecret, hospitalID)
@@ -73,48 +73,50 @@ cards := card.New(client)
 result, err := cards.Register(card.RegisterRequest{...})
 ```
 
-Each domain package contains a small client, request/response DTOs, endpoint constants, and methods that call the root `health_card.Caller` interface. Domain packages do not know how signing, token refresh, HTTP clients, or Tencent envelopes work. The root client exposes `Call(path, request, response)` as the only transport seam, and keeps the app token mutex/cache internal.
+每个领域子包包含自己的客户端、请求/响应 DTO、接口路径常量和方法，并通过根包的 `health_card.Caller` 接口发起请求。领域子包不关心签名、Token 刷新、HTTP 客户端和腾讯公共响应封装。根包只暴露 `Call(path, request, response)` 作为传输边界，appToken 的互斥锁和缓存仍然封装在根包内部。
 
-The root client accepts the current testing and deployment options (`WithBaseURL`, `WithHTTPClient`, `WithClock`, `WithRequestID`, `WithChannelNum`, related app/open ID) and adds an injectable `TokenProvider` option. The default provider fetches and caches the platform token; a production service can supply a centralized cache provider to avoid concurrent token refreshes across processes.
+根客户端保留测试和部署所需的配置项：`WithBaseURL`、`WithHTTPClient`、`WithClock`、`WithRequestID`、`WithChannelNum`、关联应用 ID 和关联用户 OpenID；另外增加可注入的 `TokenProvider`。默认 Provider 负责获取并缓存平台 Token，生产环境可以注入中控缓存 Provider，避免多进程同时刷新 Token。
 
-## Domain boundaries
+## 领域边界
 
 ### `card`
 
-Card registration and lookup, QR-code lookup/verification/generation, package order IDs, hospital-patient relation binding, and test-to-formal card-ID upgrades. Card responses reuse shared `HealthCard` and `ChildInfo` structures where Tencent response shapes overlap; endpoint-specific fields remain in endpoint DTOs.
+负责健康卡注册和查询、二维码查询/校验/生成、卡包订单号、医院患者关系绑定，以及测试卡 ID 升级为正式卡 ID。不同接口的响应结构尽量复用共享的 `HealthCard`、`ChildInfo` 等类型；只有接口独有字段才定义在接口 DTO 中。
 
 ### `patient`
 
-City support, real-name patient verification, abnormal registration form exchange, old-patient form retrieval/submission, and custom display-page field submission. The package does not persist the returned patient IDs or associate them with an application's patient table.
+负责城市健康卡支持查询、实名就诊人验证、异常建档信息交换、老患者表单查询/提交，以及自定义展码页字段提交。包只负责传递和解析患者 ID，不保存患者关系，也不直接操作业务系统的患者表。
 
 ### `verification`
 
-Face order creation/result submission, uniform real-person verification order/result lookup, and pre-verification user information. The package forwards sensitive identity fields but never logs them and does not call the WeChat facial-recognition SDK.
+负责注册人脸订单、提交人脸验证结果、统一实人验证订单/结果查询，以及验证前的用户信息获取。包会传递必要的身份信息，但不记录敏感字段，也不直接调用微信人脸核身 SDK。
 
 ### `usage`
 
-Typed reporting methods for HIS usage, application/service usage, real-name patient usage, and QR-code scan usage. Reporting methods return Tencent acknowledgement DTOs. Retries, deduplication, and daily reporting schedules remain application responsibilities.
+负责 HIS 用卡、应用/服务用卡、实名就诊人用卡和二维码扫码用卡数据上报。上报方法返回腾讯平台的确认结果；重试、去重和每日上报调度由业务系统负责。
 
 ### `device`
 
-Self-service-machine authorization QR creation and polling. The returned `uid` is application state; the package does not poll in a background goroutine.
+负责自助机授权二维码生成和结果查询。返回的 `uid` 由业务系统保存，SDK 不启动后台 Goroutine 轮询。
 
 ### `notification`
 
-Outbound referral and medical-record notifications plus a pure parser for service-159 authorization callback payloads. The parser accepts JSON bytes and returns a typed notice; HTTP routing, authentication, replay protection, and response writing remain the application’s responsibility.
+负责转诊审核结果通知、就医记录通知，以及服务 159 扫码授权回调数据的纯解析。解析器接收 JSON 字节并返回强类型通知对象；HTTP 路由、鉴权、防重放和响应写回由业务系统负责。
 
 ### `anti_fraud`
 
-Appointment risk check, including `verify`, `riskLevel`, and `toast`. The optional cancellation callback described on the same page uses the same Tencent endpoint and is represented by a separate request type/method so callers can distinguish booking and cancellation checks.
+负责预约防黄牛风险检查，返回 `verify`、`riskLevel` 和 `toast`。文档中可选的取消预约检查使用同一个腾讯地址，SDK 使用独立请求类型和方法，让调用方明确区分预约检查与取消预约检查。
 
-## Error and serialization rules
+## 错误和序列化规则
 
-All outbound calls use the shared Tencent envelope and signing algorithm. Nonzero `commonOut.resultCode` becomes `*health_card.APIError`; non-2xx HTTP status, malformed JSON, transport errors, and empty app-token responses remain ordinary Go errors. Required/optional JSON keys exactly match the web documentation, including historical spellings such as `appld`, `openld`, `healthCardld`, and `userCardInfoList` where the platform contract uses them. No generic `map[string]any` is used for documented request fields; only truly open-ended `ext`, custom fields, and notification extension data use maps or raw JSON strings.
+所有出站请求都使用统一的腾讯请求封装和签名算法。当 `commonOut.resultCode` 非零时，转换为 `*health_card.APIError`；非 2xx HTTP 状态、JSON 解析失败、网络错误和 appToken 为空仍返回普通 Go error。
 
-The root transport creates a fresh request ID and timestamp per call, signs the union of `commonIn` and request fields, and omits empty values according to the existing SDK signing rule. The app token endpoint is the only call that bypasses token acquisition.
+必填和可选 JSON 字段必须严格按照网页文档，包括平台历史字段名 `appld`、`openld`、`healthCardld` 和 `userCardInfoList`。文档中明确的请求字段不使用通用 `map[string]any`；只有开放式 `ext`、自定义字段和通知扩展数据才使用 map 或原始 JSON 字符串。
 
-## Testing and migration
+根传输层每次请求生成新的 request ID 和时间戳，将 `commonIn` 与业务请求字段合并后签名，并沿用现有 SDK 对空字段的处理规则。只有 appToken 接口跳过 Token 获取流程。
 
-Each domain gets table-driven `httptest.Server` coverage for every endpoint path, representative required/optional request fields, response decoding, and one platform-error case. Root transport tests cover token provider selection, signing, HTTP errors, malformed responses, and concurrent token refresh. README examples are rewritten for the new subpackage constructors and include the frontend/backend handoff for `wechatCode`, callback codes, and notification handlers.
+## 测试和迁移
 
-The old root-level endpoint files are removed after the new packages and tests are green. This is an intentional breaking redesign, as approved, rather than a compatibility shim that would duplicate all types and methods.
+每个领域都使用 `httptest.Server` 覆盖全部接口路径、代表性的必填/可选请求字段、响应解析和至少一个腾讯业务错误场景。根传输层测试覆盖 TokenProvider 选择、签名、HTTP 错误、非法响应和并发 Token 刷新。README 将改为新的子包构造方式，并补充 `wechatCode`、回调授权码和通知处理的前后端交接示例。
+
+新包和测试全部通过后，删除当前根包中按旧场景组织的接口文件。这是已确认的破坏性重构，不增加一层重复的兼容方法和 DTO。
