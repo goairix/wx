@@ -3,6 +3,7 @@ package errors
 import (
 	"context"
 	stderrors "errors"
+	"strings"
 	"testing"
 )
 
@@ -63,6 +64,24 @@ func TestParsePlatformErrorMalformedBody(t *testing.T) {
 	}
 	if err.Platform != "official" || err.Operation != "token" || err.HTTPStatus != 502 || err.RequestID != "rid-3" {
 		t.Fatalf("metadata = %#v", err)
+	}
+}
+
+func TestParsePlatformErrorMalformedBodyDoesNotExposeBody(t *testing.T) {
+	secret := "sensitive-token-that-must-not-be-logged"
+	body := []byte(secret + "-" + string(make([]byte, 4096)))
+	err := ParsePlatformError("official", "token", 502, body, "rid-4")
+	if err == nil {
+		t.Fatal("ParsePlatformError returned nil for malformed body")
+	}
+	if len(err.Message) > 512 {
+		t.Fatalf("malformed body message is not bounded: %d bytes", len(err.Message))
+	}
+	if strings.Contains(err.Message, string(body)) {
+		t.Fatal("malformed body message contains the complete response body")
+	}
+	if strings.Contains(err.Message, secret) {
+		t.Fatalf("malformed body message exposes sensitive body: %q", err.Message)
 	}
 }
 

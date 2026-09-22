@@ -3,8 +3,9 @@ package errors
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 )
+
+const maxMalformedErrorDetail = 256
 
 // ParsePlatformError converts a platform error response into a structured Error.
 // Both errcode/errmsg and code/message response shapes are supported. Numeric
@@ -25,10 +26,11 @@ func ParsePlatformError(platform, operation string, status int, body []byte, req
 	}
 	if decodeErr := json.Unmarshal(body, &payload); decodeErr != nil {
 		err.Err = fmt.Errorf("parse platform error response: %w", decodeErr)
-		err.Message = strings.TrimSpace(string(body))
-		if err.Message == "" {
-			err.Message = decodeErr.Error()
+		detail := decodeErr.Error()
+		if len(detail) > maxMalformedErrorDetail {
+			detail = detail[:maxMalformedErrorDetail] + "..."
 		}
+		err.Message = fmt.Sprintf("malformed platform error response (%d bytes): %s", len(body), detail)
 		return err
 	}
 
