@@ -32,6 +32,8 @@ result, err := cards.Register(card.RegisterRequest{
 
 每个领域包的 README 都列出完整接口、服务 ID、关键参数、出站/入站边界和调用示例。
 
+根客户端对应腾讯的 [139：获取接口调用凭证 appToken](https://open.tengmed.com/openAccess/ability/detail?sceneId=0&catalogId=21&serviceId=139)，领域接口文档链接见各子包 README。
+
 ## 配置与错误
 
 ```go

@@ -8,3 +8,8 @@ status, err := client.Device().QueryAuthorizationQRCode(device.QueryAuthorizatio
 ```
 
 二维码图片和 `uid` 由后端返回给自助机；轮询状态为 2 时再按业务流程查询或建档健康卡。
+
+| 方法 | 服务 ID | 腾讯服务文档 |
+| --- | ---: | --- |
+| `CreateAuthorizationQRCode` | 155 | [创建二维码](https://open.tengmed.com/openAccess/ability/detail?sceneId=0&catalogId=21&serviceId=155) |
+| `QueryAuthorizationQRCode` | 156 | [获取用户扫码授权结果](https://open.tengmed.com/openAccess/ability/detail?sceneId=0&catalogId=21&serviceId=156) |
