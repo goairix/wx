@@ -9,10 +9,12 @@ import (
 // Request describes an API request before it is encoded for transport.
 type Request struct {
 	Operation string
+	Platform  string
 	Method    string
 	Path      string
 	Query     url.Values
 	Header    http.Header
 	Body      interface{}
 	Result    interface{}
+	Meta      *ResponseMeta
 }
