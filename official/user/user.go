@@ -203,21 +203,6 @@ func (u *User) BatchUnBlackUser(openidList []string) error {
 	return nil
 }
 
-// Info 用户信息
-type Info struct {
-	Subscribe      uint8   `json:"subscribe"`
-	Openid         string  `json:"openid"`
-	UnionID        string  `json:"unionid"`
-	Language       string  `json:"language"`
-	Remark         string  `json:"remark"`
-	GroupID        int64   `json:"groupid"`
-	TagIdList      []int64 `json:"tagid_list"`
-	SubscribeTime  int64   `json:"subscribe_time"`
-	SubscribeScene string  `json:"subscribe_scene"`
-	QrScene        int64   `json:"qr_scene"`
-	QrSceneStr     string  `json:"qr_scene_str"`
-}
-
 // List 用户列表
 type List struct {
 	Total      int64  `json:"total"`

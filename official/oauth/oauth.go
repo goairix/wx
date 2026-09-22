@@ -144,16 +144,6 @@ func (auth *OAuth) getTokenUrl(code string) string {
 	)
 }
 
-type AccessTokenResponse struct {
-	kernelError.ApiError
-	AccessToken  string `json:"access_token"`
-	ExpiresIn    int64  `json:"expires_in"`
-	RefreshToken string `json:"refresh_token"`
-	Openid       string `json:"openid"`
-	Scope        string `json:"scope"`
-	UnionID      string `json:"unionid"`
-}
-
 type userResponse struct {
 	kernelError.ApiError
 	user.User

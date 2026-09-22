@@ -1,12 +1,17 @@
 package official
 
 import (
+	"net/http"
+
+	corecache "github.com/goairix/wx/v2/core/cache"
+	"github.com/goairix/wx/v2/core/observability"
+	"github.com/goairix/wx/v2/core/transport"
 	"github.com/goairix/wx/v2/kernel/contracts"
-	"github.com/goairix/wx/v2/support/cache"
+	legacycache "github.com/goairix/wx/v2/support/cache"
 	"github.com/goairix/wx/v2/support/lock"
 )
 
-// config 公众号配置
+// config stores legacy constructor settings.
 type config struct {
 	isOpenPlatform         bool
 	appId                  string
@@ -17,41 +22,51 @@ type config struct {
 	authorizerAccount      contracts.AuthorizerInterface
 }
 
-// option 公众号选项
+// option contains options shared by the legacy and v2 constructors.
 type option struct {
-	cache               cache.Cache
+	cache               legacycache.Cache
+	coreCache           corecache.Cache
 	cacheKeyPrefix      string
 	locker              lock.Locker
 	accessTokenProvider contracts.AccessTokenProvider
+	baseURL             string
+	httpClient          *http.Client
+	retry               transport.RetryPolicy
+	hook                observability.Hook
 }
 
 type Option func(*option)
 
-// WithCache 设置缓存
-func WithCache(cache cache.Cache) Option {
+// WithCache accepts either the v2 core cache or the legacy cache interface.
+func WithCache(value interface{}) Option {
 	return func(o *option) {
-		o.cache = cache
+		switch cache := value.(type) {
+		case corecache.Cache:
+			o.coreCache = cache
+		case legacycache.Cache:
+			o.cache = cache
+		}
 	}
 }
 
-// WithCacheKeyPrefix 设置缓存key前缀
 func WithCacheKeyPrefix(cacheKeyPrefix string) Option {
-	return func(o *option) {
-		o.cacheKeyPrefix = cacheKeyPrefix
-	}
+	return func(o *option) { o.cacheKeyPrefix = cacheKeyPrefix }
 }
-
-// WithLocker 设置锁
-func WithLocker(locker lock.Locker) Option {
-	return func(o *option) {
-		o.locker = locker
-	}
-}
-
-// WithAccessTokenProvider 设置外部access_token提供者
-// 设置后将使用外部提供者获取access_token，不再使用内置的token获取逻辑
+func WithLocker(locker lock.Locker) Option { return func(o *option) { o.locker = locker } }
 func WithAccessTokenProvider(provider contracts.AccessTokenProvider) Option {
-	return func(o *option) {
-		o.accessTokenProvider = provider
-	}
+	return func(o *option) { o.accessTokenProvider = provider }
 }
+
+// WithBaseURL overrides the API endpoint, primarily for tests and proxies.
+func WithBaseURL(baseURL string) Option { return func(o *option) { o.baseURL = baseURL } }
+
+// WithHTTPClient injects the HTTP client used by the v2 transport.
+func WithHTTPClient(client *http.Client) Option { return func(o *option) { o.httpClient = client } }
+
+// WithRetryPolicy configures v2 transport retries.
+func WithRetryPolicy(policy transport.RetryPolicy) Option {
+	return func(o *option) { o.retry = policy }
+}
+
+// WithHook attaches v2 request observability hooks.
+func WithHook(hook observability.Hook) Option { return func(o *option) { o.hook = hook } }
