@@ -2,7 +2,7 @@ package health_card
 
 import "strconv"
 
-// CommonIn contains parameters shared by every Health Card API request.
+// CommonIn 是所有健康卡请求共用的公共入参。
 type CommonIn struct {
 	AppToken     string `json:"appToken"`
 	RequestID    string `json:"requestId"`
@@ -14,20 +14,20 @@ type CommonIn struct {
 	RelateOpenID string `json:"relateOpenId,omitempty"`
 }
 
-// CommonOut contains the platform result envelope.
+// CommonOut 是腾讯平台返回的公共结果信息。
 type CommonOut struct {
 	RequestID  string `json:"requestId"`
 	ResultCode int    `json:"resultCode"`
 	ErrMsg     string `json:"errMsg"`
 }
 
-// AppTokenResponse contains a platform token and its lifetime in seconds.
+// AppTokenResponse 是 getAppToken 接口返回的凭证及有效期。
 type AppTokenResponse struct {
 	AppToken  string `json:"appToken"`
 	ExpiresIn int    `json:"expiresIn"`
 }
 
-// APIError is returned when the Health Card platform rejects a request.
+// APIError 表示腾讯健康卡平台返回了业务错误。
 type APIError struct {
 	RequestID string
 	Code      int

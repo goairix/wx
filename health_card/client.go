@@ -24,7 +24,9 @@ import (
 const defaultBaseURL = "https://p-healthopen.tengmed.com"
 const getAppTokenPath = "/rest/auth/HealthCard/HealthOpenAuth/AuthObj/getAppToken"
 
-// Client calls the Tencent Electronic Health Card Open Platform.
+// Client 是腾讯电子健康卡开放平台的根客户端。
+// 它负责公共参数组装、请求签名、appToken 管理、HTTP 调用和统一错误转换，
+// 业务接口通过 Card、Patient 等领域入口访问。
 type Client struct {
 	appID         string
 	appSecret     string
@@ -63,7 +65,7 @@ func (client *Client) Notification() *notification.Client { return notification.
 // AntiFraud 返回预约防黄牛领域客户端。
 func (client *Client) AntiFraud() *anti_fraud.Client { return anti_fraud.New(client) }
 
-// Option customizes a Client.
+// Option 用于配置根客户端。
 type Option func(*Client)
 
 // WithAccessTokenProvider 注入外部 appToken 提供器。设置后不再请求腾讯的凭证接口。
@@ -76,12 +78,12 @@ func WithTokenProvider(provider kernelContracts.AccessTokenProvider) Option {
 	return WithAccessTokenProvider(provider)
 }
 
-// WithBaseURL overrides the production endpoint, primarily for testing.
+// WithBaseURL 覆盖腾讯生产环境地址，通常用于测试环境或 httptest.Server。
 func WithBaseURL(baseURL string) Option {
 	return func(client *Client) { client.baseURL = strings.TrimRight(baseURL, "/") }
 }
 
-// WithHTTPClient sets the HTTP client used for requests.
+// WithHTTPClient 设置底层 HTTP 客户端，可用于设置超时、代理和自定义传输层。
 func WithHTTPClient(httpClient *http.Client) Option {
 	return func(client *Client) {
 		if httpClient != nil {
@@ -90,28 +92,28 @@ func WithHTTPClient(httpClient *http.Client) Option {
 	}
 }
 
-// WithChannelNum sets the platform channel number.
+// WithChannelNum 设置腾讯平台要求的渠道编号。
 func WithChannelNum(channelNum int) Option {
 	return func(client *Client) { client.channelNum = channelNum }
 }
 
-// WithAppToken supplies an already fetched token. When omitted, the client
-// obtains and caches a token through the platform getAppToken API.
+// WithAppToken 注入已经获取的 appToken。
+// 未注入时，客户端会通过 getAppToken 接口自动获取并在内存中缓存。
 func WithAppToken(appToken string) Option {
 	return func(client *Client) { client.appToken = appToken }
 }
 
-// WithRelatedAppID sets the optional related mini-program or service account ID.
+// WithRelatedAppID 设置关联的小程序或公众号 AppID（可选）。
 func WithRelatedAppID(appID string) Option {
 	return func(client *Client) { client.relateAppID = appID }
 }
 
-// WithRelatedOpenID sets the optional related WeChat user open ID.
+// WithRelatedOpenID 设置关联的微信用户 OpenID（可选）。
 func WithRelatedOpenID(openID string) Option {
 	return func(client *Client) { client.relateOpenID = openID }
 }
 
-// WithClock replaces the clock used to create request timestamps.
+// WithClock 替换生成请求时间戳的时钟，主要用于测试。
 func WithClock(now func() time.Time) Option {
 	return func(client *Client) {
 		if now != nil {
@@ -120,7 +122,7 @@ func WithClock(now func() time.Time) Option {
 	}
 }
 
-// WithRequestID replaces request ID generation.
+// WithRequestID 替换请求 ID 生成函数，主要用于测试和链路追踪。
 func WithRequestID(requestID func() string) Option {
 	return func(client *Client) {
 		if requestID != nil {
@@ -129,7 +131,7 @@ func WithRequestID(requestID func() string) Option {
 	}
 }
 
-// New creates a Tencent Electronic Health Card client.
+// New 创建腾讯电子健康卡根客户端。
 func New(appID, appSecret, hospitalID string, opts ...Option) *Client {
 	client := &Client{
 		appID:      appID,
@@ -149,7 +151,9 @@ func New(appID, appSecret, hospitalID string, opts ...Option) *Client {
 	return client
 }
 
-// AppToken returns a cached platform token or fetches a new one when needed.
+// AppToken 返回当前可用的 appToken。
+// 配置外部 TokenProvider 时由外部提供；否则在本地缓存有效时直接返回，
+// 缓存失效后自动请求腾讯 getAppToken 接口。
 func (client *Client) AppToken() (string, error) {
 	if client.tokenProvider != nil {
 		token, err := client.tokenProvider.GetAccessToken()

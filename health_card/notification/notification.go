@@ -14,12 +14,17 @@ const (
 // Client 封装转诊和就医记录通知接口。
 type Client struct{ caller contracts.Caller }
 
+// New 创建平台通知领域客户端，通常由根客户端的 Notification 方法调用。
 func New(caller contracts.Caller) *Client { return &Client{caller: caller} }
+
+// NotifyReferralResult 向腾讯平台通知转诊审核结果。
 func (c *Client) NotifyReferralResult(req NotifyReferralResultRequest) (NotifyReferralResultResponse, error) {
 	var out NotifyReferralResultResponse
 	err := c.caller.Call(referralPath, req, &out)
 	return out, err
 }
+
+// SendMedicalRecordNotice 向用户推送就医记录通知。
 func (c *Client) SendMedicalRecordNotice(req SendMedicalRecordNoticeRequest) (SendMedicalRecordNoticeResponse, error) {
 	var out SendMedicalRecordNoticeResponse
 	err := c.caller.Call(medicalRecordPath, req, &out)
