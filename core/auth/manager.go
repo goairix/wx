@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/goairix/wx/v2/core/cache"
@@ -36,10 +37,17 @@ func NewManager(platform, key string, c Cache, provider Provider) *Manager {
 	return &Manager{
 		platform: platform,
 		key:      key,
-		cacheKey: platform + ":" + key,
+		cacheKey: makeCredentialCacheKey(platform, key),
 		cache:    c,
 		provider: provider,
 	}
+}
+
+// makeCredentialCacheKey encodes both components with their lengths so
+// platform/key pairs remain distinct even when either component contains the
+// separator used by a human-readable cache key.
+func makeCredentialCacheKey(platform, key string) string {
+	return strconv.Itoa(len(platform)) + ":" + platform + strconv.Itoa(len(key)) + ":" + key
 }
 
 // Token returns a cached credential or obtains and caches a fresh one.

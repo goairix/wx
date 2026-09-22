@@ -67,6 +67,32 @@ func TestManagersSharingCacheAndKeyRefreshOnce(t *testing.T) {
 	}
 }
 
+func TestManagersWithAmbiguousComponentsDoNotShareCacheEntry(t *testing.T) {
+	var calls int32
+	provider := ProviderFunc(func(context.Context) (Credential, error) {
+		call := atomic.AddInt32(&calls, 1)
+		return Credential{AccessToken: "token-" + string(rune('0'+call)), ExpiresAt: time.Now().Add(time.Hour)}, nil
+	})
+	sharedCache := cache.NewMemory()
+	first := NewManager("a", "b:c", sharedCache, provider)
+	second := NewManager("a:b", "c", sharedCache, provider)
+
+	firstCredential, err := first.Token(context.Background())
+	if err != nil {
+		t.Fatalf("first Token() error = %v", err)
+	}
+	secondCredential, err := second.Token(context.Background())
+	if err != nil {
+		t.Fatalf("second Token() error = %v", err)
+	}
+	if firstCredential.AccessToken == secondCredential.AccessToken {
+		t.Fatalf("ambiguous platform/key pairs shared credential %q", firstCredential.AccessToken)
+	}
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Fatalf("provider called %d times, want 2", got)
+	}
+}
+
 func TestMemoryCacheExpiresEntries(t *testing.T) {
 	c := cache.NewMemory()
 	if err := c.Put(context.Background(), "key", "value", 10*time.Millisecond); err != nil {
