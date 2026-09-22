@@ -118,6 +118,10 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 		if req.Result == nil || len(responseBody) == 0 || response.StatusCode == http.StatusNoContent {
 			return nil
 		}
+		if bytesResult, ok := req.Result.(*[]byte); ok {
+			*bytesResult = append((*bytesResult)[:0], responseBody...)
+			return nil
+		}
 		if err := json.Unmarshal(responseBody, req.Result); err != nil {
 			return fmt.Errorf("decode %s response: %w", req.Operation, err)
 		}
