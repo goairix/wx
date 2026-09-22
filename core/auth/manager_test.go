@@ -36,6 +36,37 @@ func TestManagerRefreshesOnceForConcurrentCallers(t *testing.T) {
 	}
 }
 
+func TestManagersSharingCacheAndKeyRefreshOnce(t *testing.T) {
+	var calls int32
+	provider := ProviderFunc(func(context.Context) (Credential, error) {
+		atomic.AddInt32(&calls, 1)
+		time.Sleep(10 * time.Millisecond)
+		return Credential{AccessToken: "shared", ExpiresAt: time.Now().Add(time.Hour)}, nil
+	})
+	sharedCache := cache.NewMemory()
+	first := NewManager("work", "corp-1", sharedCache, provider)
+	second := NewManager("work", "corp-1", sharedCache, provider)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		manager := first
+		if i%2 == 1 {
+			manager = second
+		}
+		go func() {
+			defer wg.Done()
+			if _, err := manager.Token(context.Background()); err != nil {
+				t.Errorf("Token() error = %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Fatalf("provider called %d times, want 1", got)
+	}
+}
+
 func TestMemoryCacheExpiresEntries(t *testing.T) {
 	c := cache.NewMemory()
 	if err := c.Put(context.Background(), "key", "value", 10*time.Millisecond); err != nil {

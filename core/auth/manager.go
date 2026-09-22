@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/goairix/wx/v2/core/cache"
@@ -26,7 +25,6 @@ type Manager struct {
 	cacheKey string
 	cache    cache.Cache
 	provider Provider
-	mu       sync.Mutex
 }
 
 // NewManager creates a credential manager for platform and key. A nil cache is
@@ -56,11 +54,12 @@ func (m *Manager) Token(ctx context.Context) (Credential, error) {
 		return Credential{}, fmt.Errorf("auth: nil manager")
 	}
 
-	// Each Manager owns one cache key, so this mutex is the per-cache-key
-	// single-flight coordinator. Recheck the cache after acquiring it so all
-	// concurrent callers observe the first successful refresh.
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	// Coordinate by cache instance and key so independently configured managers
+	// sharing a cache cannot refresh the same credential concurrently. Recheck
+	// the cache after acquiring the lock so all callers observe the first
+	// successful refresh.
+	unlock := acquireRefreshLock(m.cache, m.cacheKey)
+	defer unlock()
 	if err := ctx.Err(); err != nil {
 		return Credential{}, err
 	}
