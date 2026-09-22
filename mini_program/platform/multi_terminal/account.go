@@ -1,6 +1,6 @@
 package multi_terminal
 
-import "github.com/goairix/wx/support/cache"
+import "github.com/goairix/wx/v2/support/cache"
 
 func (m *MultiTerminal) IsOpenPlatform() bool {
 	return false

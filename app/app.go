@@ -1,9 +1,9 @@
 package app
 
 import (
-	"github.com/goairix/wx/app/oauth"
-	"github.com/goairix/wx/support/cache"
-	"github.com/goairix/wx/support/lock"
+	"github.com/goairix/wx/v2/app/oauth"
+	"github.com/goairix/wx/v2/support/cache"
+	"github.com/goairix/wx/v2/support/lock"
 )
 
 // App 移动应用

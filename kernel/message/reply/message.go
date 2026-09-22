@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/goairix/wx/kernel/message"
+	"github.com/goairix/wx/v2/kernel/message"
 )
 
 // Body 回复消息体

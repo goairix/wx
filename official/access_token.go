@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/goairix/wx/kernel/contracts"
-	kernelError "github.com/goairix/wx/kernel/error"
+	"github.com/goairix/wx/v2/kernel/contracts"
+	kernelError "github.com/goairix/wx/v2/kernel/error"
 
-	"github.com/goairix/wx/support/http"
+	"github.com/goairix/wx/v2/support/http"
 )
 
 // AccessToken 获取/刷新token

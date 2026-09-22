@@ -3,7 +3,7 @@ package notification
 import (
 	"encoding/json"
 
-	"github.com/goairix/wx/health_card/contracts"
+	"github.com/goairix/wx/v2/health_card/contracts"
 )
 
 const (

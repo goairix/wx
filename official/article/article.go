@@ -1,7 +1,7 @@
 package article
 
 import (
-	"github.com/goairix/wx/kernel/contracts"
+	"github.com/goairix/wx/v2/kernel/contracts"
 )
 
 // Article 公众号文章管理

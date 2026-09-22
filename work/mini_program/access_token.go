@@ -3,7 +3,7 @@ package mini_program
 import (
 	"fmt"
 
-	"github.com/goairix/wx/kernel/contracts"
+	"github.com/goairix/wx/v2/kernel/contracts"
 )
 
 // AccessToken 获取当前企业微信账号的 access_token。

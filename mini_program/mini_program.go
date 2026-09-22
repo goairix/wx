@@ -1,18 +1,18 @@
 package mini_program
 
 import (
-	"github.com/goairix/wx/base/server"
-	"github.com/goairix/wx/kernel/contracts"
-	"github.com/goairix/wx/mini_program/auth"
-	"github.com/goairix/wx/mini_program/authorizer"
-	"github.com/goairix/wx/mini_program/content"
-	"github.com/goairix/wx/mini_program/encryptor"
-	"github.com/goairix/wx/mini_program/message"
-	"github.com/goairix/wx/mini_program/qr_code"
-	"github.com/goairix/wx/mini_program/user"
-	"github.com/goairix/wx/mini_program/wxa_code"
-	"github.com/goairix/wx/support/cache"
-	"github.com/goairix/wx/support/lock"
+	"github.com/goairix/wx/v2/base/server"
+	"github.com/goairix/wx/v2/kernel/contracts"
+	"github.com/goairix/wx/v2/mini_program/auth"
+	"github.com/goairix/wx/v2/mini_program/authorizer"
+	"github.com/goairix/wx/v2/mini_program/content"
+	"github.com/goairix/wx/v2/mini_program/encryptor"
+	"github.com/goairix/wx/v2/mini_program/message"
+	"github.com/goairix/wx/v2/mini_program/qr_code"
+	"github.com/goairix/wx/v2/mini_program/user"
+	"github.com/goairix/wx/v2/mini_program/wxa_code"
+	"github.com/goairix/wx/v2/support/cache"
+	"github.com/goairix/wx/v2/support/lock"
 )
 
 // MiniProgram 小程序

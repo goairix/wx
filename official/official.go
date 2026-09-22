@@ -1,18 +1,18 @@
 package official
 
 import (
-	"github.com/goairix/wx/base/jssdk"
-	"github.com/goairix/wx/base/server"
-	"github.com/goairix/wx/kernel/contracts"
-	"github.com/goairix/wx/official/article"
-	"github.com/goairix/wx/official/authorizer"
-	"github.com/goairix/wx/official/menu"
-	"github.com/goairix/wx/official/message"
-	"github.com/goairix/wx/official/oauth"
-	"github.com/goairix/wx/official/qr_code"
-	"github.com/goairix/wx/official/user"
-	"github.com/goairix/wx/support/cache"
-	"github.com/goairix/wx/support/lock"
+	"github.com/goairix/wx/v2/base/jssdk"
+	"github.com/goairix/wx/v2/base/server"
+	"github.com/goairix/wx/v2/kernel/contracts"
+	"github.com/goairix/wx/v2/official/article"
+	"github.com/goairix/wx/v2/official/authorizer"
+	"github.com/goairix/wx/v2/official/menu"
+	"github.com/goairix/wx/v2/official/message"
+	"github.com/goairix/wx/v2/official/oauth"
+	"github.com/goairix/wx/v2/official/qr_code"
+	"github.com/goairix/wx/v2/official/user"
+	"github.com/goairix/wx/v2/support/cache"
+	"github.com/goairix/wx/v2/support/lock"
 )
 
 // Official 公众号

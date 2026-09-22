@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/goairix/wx/support/cache"
-	"github.com/goairix/wx/support/lock"
+	"github.com/goairix/wx/v2/support/cache"
+	"github.com/goairix/wx/v2/support/lock"
 )
 
 const healthCardAppTokenCacheName = "health_card_app_token"

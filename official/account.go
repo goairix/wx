@@ -1,6 +1,6 @@
 package official
 
-import "github.com/goairix/wx/support/cache"
+import "github.com/goairix/wx/v2/support/cache"
 
 func (official *Official) Token() string {
 	if official.IsOpenPlatform() {

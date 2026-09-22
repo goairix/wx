@@ -1,6 +1,6 @@
 package contracts
 
-import "github.com/goairix/wx/support/cache"
+import "github.com/goairix/wx/v2/support/cache"
 
 // AccountInterface 公众账号接口
 type AccountInterface interface {

@@ -1,6 +1,6 @@
 package oauth
 
-import "github.com/goairix/wx/support/lock"
+import "github.com/goairix/wx/v2/support/lock"
 
 type Option func(auth *OAuth)
 

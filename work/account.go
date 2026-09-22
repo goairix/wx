@@ -1,7 +1,7 @@
 package work
 
 import (
-	"github.com/goairix/wx/support/cache"
+	"github.com/goairix/wx/v2/support/cache"
 )
 
 // Token 返回回调校验使用的 Token。

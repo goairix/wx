@@ -1,7 +1,7 @@
 package app
 
 import (
-	"github.com/goairix/wx/support/cache"
+	"github.com/goairix/wx/v2/support/cache"
 )
 
 func (app *App) Token() string {

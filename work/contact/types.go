@@ -1,6 +1,6 @@
 package contact
 
-import kernelError "github.com/goairix/wx/kernel/error"
+import kernelError "github.com/goairix/wx/v2/kernel/error"
 
 // Attr 扩展属性
 type Attr struct {

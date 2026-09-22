@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	kernelContracts "github.com/goairix/wx/kernel/contracts"
+	kernelContracts "github.com/goairix/wx/v2/kernel/contracts"
 )
 
 type testTokenProvider struct{ calls int }

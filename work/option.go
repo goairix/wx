@@ -1,9 +1,9 @@
 package work
 
 import (
-	"github.com/goairix/wx/kernel/contracts"
-	"github.com/goairix/wx/support/cache"
-	"github.com/goairix/wx/support/lock"
+	"github.com/goairix/wx/v2/kernel/contracts"
+	"github.com/goairix/wx/v2/support/cache"
+	"github.com/goairix/wx/v2/support/lock"
 )
 
 type config struct {

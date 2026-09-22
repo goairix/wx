@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/goairix/wx/kernel/contracts"
-	kernelError "github.com/goairix/wx/kernel/error"
-	"github.com/goairix/wx/work/http"
+	"github.com/goairix/wx/v2/kernel/contracts"
+	kernelError "github.com/goairix/wx/v2/kernel/error"
+	"github.com/goairix/wx/v2/work/http"
 )
 
 // ServiceState 会话管理

@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	kernelError "github.com/goairix/wx/kernel/error"
-	"github.com/goairix/wx/work/http"
+	kernelError "github.com/goairix/wx/v2/kernel/error"
+	"github.com/goairix/wx/v2/work/http"
 )
 
 // Chat 群聊会话

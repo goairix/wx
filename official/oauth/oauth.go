@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/goairix/wx/kernel/contracts"
-	kernelError "github.com/goairix/wx/kernel/error"
-	"github.com/goairix/wx/kernel/user"
+	"github.com/goairix/wx/v2/kernel/contracts"
+	kernelError "github.com/goairix/wx/v2/kernel/error"
+	"github.com/goairix/wx/v2/kernel/user"
 
-	supportHttp "github.com/goairix/wx/support/http"
+	supportHttp "github.com/goairix/wx/v2/support/http"
 
 	"github.com/pkg/errors"
 )

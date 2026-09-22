@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/goairix/wx/kernel/contracts"
-	kernelError "github.com/goairix/wx/kernel/error"
-	workHttp "github.com/goairix/wx/work/http"
+	"github.com/goairix/wx/v2/kernel/contracts"
+	kernelError "github.com/goairix/wx/v2/kernel/error"
+	workHttp "github.com/goairix/wx/v2/work/http"
 )
 
 const oauthBaseUrl = "https://open.weixin.qq.com/connect/oauth2/authorize"

@@ -1,6 +1,6 @@
 package qr_code
 
-import "github.com/goairix/wx/kernel/contracts"
+import "github.com/goairix/wx/v2/kernel/contracts"
 
 // QrCode 普通链接二维码
 // @see https://developers.weixin.qq.com/miniprogram/introduction/qrcode.html

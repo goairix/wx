@@ -1,6 +1,6 @@
 package customer
 
-import "github.com/goairix/wx/kernel/contracts"
+import "github.com/goairix/wx/v2/kernel/contracts"
 
 // Customer 客户联系
 type Customer struct {

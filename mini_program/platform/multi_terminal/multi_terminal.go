@@ -1,9 +1,9 @@
 package multi_terminal
 
 import (
-	"github.com/goairix/wx/mini_program/platform/multi_terminal/oauth"
-	"github.com/goairix/wx/support/cache"
-	"github.com/goairix/wx/support/lock"
+	"github.com/goairix/wx/v2/mini_program/platform/multi_terminal/oauth"
+	"github.com/goairix/wx/v2/support/cache"
+	"github.com/goairix/wx/v2/support/lock"
 )
 
 // MultiTerminal 多端能力

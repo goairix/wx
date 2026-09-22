@@ -8,14 +8,14 @@ import (
 	"log"
 	"time"
 
-	"github.com/goairix/wx/support/lock"
+	"github.com/goairix/wx/v2/support/lock"
 
-	"github.com/goairix/wx/support"
+	"github.com/goairix/wx/v2/support"
 
-	"github.com/goairix/wx/kernel/contracts"
-	kernelError "github.com/goairix/wx/kernel/error"
+	"github.com/goairix/wx/v2/kernel/contracts"
+	kernelError "github.com/goairix/wx/v2/kernel/error"
 
-	"github.com/goairix/wx/support/http"
+	"github.com/goairix/wx/v2/support/http"
 )
 
 const jssdkTicketCacheKey = "jssdk.ticket.%s.%s"

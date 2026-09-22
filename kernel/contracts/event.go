@@ -3,8 +3,8 @@ package contracts
 import (
 	"context"
 
-	"github.com/goairix/wx/kernel/message"
-	"github.com/goairix/wx/kernel/message/reply"
+	"github.com/goairix/wx/v2/kernel/message"
+	"github.com/goairix/wx/v2/kernel/message/reply"
 )
 
 // EventHandler 事件处理函数

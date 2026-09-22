@@ -3,7 +3,7 @@ package app
 import (
 	"fmt"
 
-	"github.com/goairix/wx/kernel/contracts"
+	"github.com/goairix/wx/v2/kernel/contracts"
 )
 
 func (app *App) AccessToken() (contracts.AccessToken, error) {

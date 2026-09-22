@@ -1,6 +1,6 @@
 package kf
 
-import kernelError "github.com/goairix/wx/kernel/error"
+import kernelError "github.com/goairix/wx/v2/kernel/error"
 
 // UpdateAccountRequest 修改客服账号请求
 type UpdateAccountRequest struct {

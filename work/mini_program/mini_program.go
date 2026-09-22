@@ -1,9 +1,9 @@
 package mini_program
 
 import (
-	"github.com/goairix/wx/support/cache"
-	"github.com/goairix/wx/support/lock"
-	"github.com/goairix/wx/work/mini_program/auth"
+	"github.com/goairix/wx/v2/support/cache"
+	"github.com/goairix/wx/v2/support/lock"
+	"github.com/goairix/wx/v2/work/mini_program/auth"
 )
 
 // MiniProgram 企业微信小程序

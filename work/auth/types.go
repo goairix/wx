@@ -1,6 +1,6 @@
 package auth
 
-import kernelError "github.com/goairix/wx/kernel/error"
+import kernelError "github.com/goairix/wx/v2/kernel/error"
 
 // UserIdentity 用户身份信息
 type UserIdentity struct {
