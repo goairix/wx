@@ -27,6 +27,7 @@ v2.0.0 覆盖当前仓库已有的全部产品能力：
 - 不把所有平台强行抽象成相同的业务模型。
 - 不让公共 core 依赖任何平台包或领域包。
 - 不在本次架构重构中引入代码生成器；先保持手写 API 清晰可审查。
+- 不依赖 `github.com/pkg/errors` 或其他第三方错误库；错误构造和因果链由 `core/errors` 自己实现。
 
 ## 3. 总体架构
 
@@ -249,7 +250,21 @@ type Provider interface {
 
 ## 8. 结构化错误
 
-`core/errors` 提供统一错误类型：
+`core/errors` 是 v2 自己维护的错误包，不依赖 `github.com/pkg/errors`。它提供基础错误构造和标准因果链操作：
+
+```go
+func New(message string) error
+func Errorf(format string, args ...interface{}) error
+func Wrap(err error, message string) error
+func Wrapf(err error, format string, args ...interface{}) error
+func Is(err, target error) bool
+func As(err error, target interface{}) bool
+func Unwrap(err error) error
+```
+
+`Wrap` 和 `Wrapf` 必须实现 `Unwrap`，`Is` 和 `As` 委托标准库 `errors` 的语义。v2 不实现堆栈采集，避免重新引入外部错误库；请求操作、平台、request ID 和底层原因由结构化错误保存。
+
+`core/errors` 还提供统一平台错误类型：
 
 ```go
 type Error struct {
@@ -357,7 +372,8 @@ v2.0.0 发布前必须完成：
 
 - 所有现有产品能力迁移到新目录。
 - 所有网络 API 增加 context 参数。
-- 所有公共错误改为结构化错误。
+- 所有公共错误改为结构化错误，并移除 `github.com/pkg/errors`。
+- `go.mod` 和 `go.sum` 中不再包含 `github.com/pkg/errors`。
 - 所有领域模块通过 core transport 发请求。
 - 每个平台至少完成一组请求构造、错误解析和集成测试。
 - 更新根 README、各平台 README 和迁移指南。

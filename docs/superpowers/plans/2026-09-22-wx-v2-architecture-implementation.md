@@ -6,13 +6,14 @@
 
 **Architecture:** 根模块使用 `github.com/goairix/wx/v2`。`core` 只提供平台无关的 request、transport、auth、cache、errors、observability 和 webhook 基础设施；`official`、`miniapp`、`work`、`openplatform`、`mobileapp`、`healthcard` 各自拥有 Client、配置、认证策略和领域模块。领域模块只依赖窄的 `Caller` 接口，所有网络方法接收 `context.Context`。
 
-**Tech Stack:** Go 1.17 起步、标准 `net/http`、`context`、`httptest`、`encoding/json`、现有 `github.com/pkg/errors` 仅在迁移期间保留；v2 稳定后公共 API 使用标准库 `errors.Is/As`。
+**Tech Stack:** Go 1.17 起步、标准 `net/http`、`context`、`httptest`、`encoding/json`；错误构造、包装和结构化平台错误全部由 `core/errors` 自己实现，不引入 `github.com/pkg/errors`。
 
 ## Global Constraints
 
 - 任何网络调用都必须从调用方接收 `context.Context`，不得在业务方法内部使用 `context.Background()`。
 - core 包不得导入任何平台包；平台包不得互相形成循环依赖。
 - 平台错误码以 `string` 保存，结构化错误必须实现 `Error` 和 `Unwrap`。
+- 最终 `go.mod` 和 `go.sum` 不得包含 `github.com/pkg/errors`；迁移旧目录期间可暂时保留，Task 12 必须删除。
 - 每个领域模块至少有请求构造、响应解析和 `httptest.Server` 集成测试。
 - 不在 v2 中添加 v1 兼容包装层；v1 代码只作为迁移参考，完成迁移后删除旧实现。
 - 每个任务完成后运行该任务列出的测试并提交一个独立 commit。
@@ -112,39 +113,43 @@ git commit -m "build: start wx v2 module"
 - Create: `core/errors/parser.go`
 - Create: `core/errors/error_test.go`
 
-- [ ] **Step 1: Write tests for unwrap and platform error parsing**
+- [ ] **Step 1: Write tests for self-owned constructors, wrapping, and platform parsing**
 
 ```go
-func TestErrorSupportsErrorsAsAndUnwrap(t *testing.T) {
+func TestOwnErrorsPreserveCause(t *testing.T) {
     cause := context.Canceled
-    err := &Error{Platform: "work", Operation: "contact.user.get", Code: "40014", Err: cause}
-    var got *Error
-    if !errors.As(err, &got) || got.Code != "40014" {
-        t.Fatalf("errors.As did not recover structured error: %#v", got)
-    }
-    if !errors.Is(err, cause) {
-        t.Fatal("underlying context error was not preserved")
-    }
+    err := Wrapf(cause, "request %s", "contact.user.get")
+    if !Is(err, cause) { t.Fatal("wrapped cause was not discoverable") }
+    if Unwrap(err) != cause { t.Fatal("unwrap returned the wrong cause") }
+    var target *Error
+    structured := &Error{Platform: "work", Operation: "contact.user.get", Code: "40014", Err: err}
+    if !As(structured, &target) || target.Code != "40014" { t.Fatalf("errors.As failed: %#v", target) }
 }
 
 func TestParsePlatformErrorKeepsStringCode(t *testing.T) {
     err := ParsePlatformError("work", "contact.user.get", 200, []byte(`{"errcode":40014,"errmsg":"invalid access token"}`), "req-1")
-    if err.Code != "40014" || err.Message != "invalid access token" || err.RequestID != "req-1" {
-        t.Fatalf("unexpected error: %#v", err)
-    }
+    if err.Code != "40014" || err.Message != "invalid access token" || err.RequestID != "req-1" { t.Fatalf("unexpected error: %#v", err) }
 }
 ```
 
 - [ ] **Step 2: Run the error tests to verify the types are missing**
 
-Run: `go test ./core/errors -run 'TestErrorSupports|TestParsePlatform' -count=1`
-Expected: FAIL because `Error` and `ParsePlatformError` do not exist.
+Run: `go test ./core/errors -run 'TestOwnErrors|TestParsePlatform' -count=1`
+Expected: FAIL because the self-owned constructors and `Error` do not exist.
 
 - [ ] **Step 3: Implement the exact public error and request types**
 
 ```go
 // core/errors/error.go
 package errors
+
+func New(message string) error
+func Errorf(format string, args ...interface{}) error
+func Wrap(err error, message string) error
+func Wrapf(err error, format string, args ...interface{}) error
+func Is(err, target error) bool
+func As(err error, target interface{}) bool
+func Unwrap(err error) error
 
 type Error struct {
     Platform   string
@@ -162,9 +167,10 @@ func (e *Error) Error() string {
 }
 
 func (e *Error) Unwrap() error { return e.Err }
+func ParsePlatformError(platform, operation string, status int, body []byte, requestID string) *Error
 ```
 
-`ParsePlatformError` must decode `errcode` or `code` as `json.RawMessage`, normalize numeric and string values to `string`, and return a structured error even when the platform body is malformed. `core/request` must define `Request{Operation, Method, Path, Query, Header, Body, Result}` and `ResponseMeta{StatusCode, Header, RequestID}`.
+`New` and `Errorf` create local message errors; `Wrap` and `Wrapf` return nil for a nil cause and otherwise implement `Unwrap`. `Is`, `As`, and `Unwrap` delegate to the standard library `errors` package. `ParsePlatformError` must decode `errcode` or `code` as `json.RawMessage`, normalize numeric and string values to `string`, and return a structured error even when the platform body is malformed. `core/request` must define `Request{Operation, Method, Path, Query, Header, Body, Result}` and `ResponseMeta{StatusCode, Header, RequestID}`.
 
 - [ ] **Step 4: Run the focused tests and format the package**
 
@@ -622,6 +628,12 @@ git add healthcard
 
 ---
 
+### External error dependency migration inventory
+
+The following current imports must be replaced by `core/errors` while their domains migrate: `kernel/error/error.go`, `support/cache/error.go`, `support/encryptor/encrypt.go`, `base/open/open.go`, `app/oauth/oauth.go`, `official/oauth/oauth.go`, `official/message/template.go`, `mini_program/wxa_code/wxa_code.go`, `mini_program/authorizer/account.go`, `mini_program/authorizer/tester.go`, `mini_program/authorizer/domain.go`, `mini_program/message/subscribe.go`, `mini_program/encryptor/encryptor.go`, `open_platform/access_token.go`, and `open_platform/code/code.go`. Every replacement must preserve the original message and make the returned error discoverable with `core/errors.Is` or `core/errors.As` where a cause exists.
+
+---
+
 ### Task 12: Remove old implementations and complete webhook adapters
 
 **Files:**
@@ -647,10 +659,17 @@ rg 'github.com/goairix/wx/(app|base|kernel|mini_program|open_platform|open_work|
 
 Expected: no old internal import remains. Delete only files that have a v2 replacement, then run `go list ./...` to identify any remaining references before deleting the next group.
 
-- [ ] **Step 4: Run the complete test suite and commit**
+- [ ] **Step 4: Remove the external errors dependency and run the complete suite**
 
-Run: `gofmt -w core official miniapp work openplatform mobileapp healthcard internal && go test -race ./...`
-Expected: PASS with no old package import and no race report.
+Run:
+
+```bash
+go mod edit -droprequire=github.com/pkg/errors
+go mod tidy
+rg 'github.com/pkg/errors' --glob '*.go' go.mod go.sum
+```
+
+Expected: the `rg` command prints no matches. Then run `gofmt -w core official miniapp work openplatform mobileapp healthcard internal && go test -race ./...`; it must pass with no old package import and no race report.
 
 ```bash
 git add -A
@@ -695,6 +714,7 @@ gofmt -w $(find . -name '*.go' -type f)
 go vet ./...
 go test -race ./...
 go test ./... -run Example -count=1
+rg 'github.com/pkg/errors' go.mod go.sum
 git diff --check
 ```
 
