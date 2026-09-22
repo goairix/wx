@@ -31,7 +31,7 @@ const getAppTokenPath = "/rest/auth/HealthCard/HealthOpenAuth/AuthObj/getAppToke
 type Client struct {
 	appID               string
 	appSecret           string
-	appToken            string
+	initialAppToken     string
 	hospitalID          string
 	baseURL             string
 	channelNum          int
@@ -102,7 +102,7 @@ func WithChannelNum(channelNum int) Option {
 // WithAppToken 注入已经获取的 appToken。
 // 未注入时，客户端会通过 getAppToken 接口自动获取并在内存中缓存。
 func WithAppToken(appToken string) Option {
-	return func(client *Client) { client.appToken = appToken }
+	return func(client *Client) { client.initialAppToken = appToken }
 }
 
 // WithRelatedAppID 设置关联的小程序或公众号 AppID（可选）。
@@ -157,9 +157,9 @@ func New(appID, appSecret, hospitalID string, opts ...Option) *Client {
 	if client.tokenLocker == nil {
 		client.tokenLocker = &lock.Mutex{}
 	}
-	if client.appToken != "" {
+	if client.initialAppToken != "" {
 		// WithAppToken 表示调用方已经确认该 token 可用，因此按不过期凭证预置到缓存。
-		_ = client.writeCachedAppToken(client.appToken, 0)
+		_ = client.writeCachedAppToken(client.initialAppToken, 0)
 	}
 	return client
 }
@@ -179,14 +179,12 @@ func (client *Client) AppToken() (string, error) {
 		return token.AccessToken, nil
 	}
 	if token, ok := client.readCachedAppToken(); ok {
-		client.appToken = token
 		return token, nil
 	}
 	client.tokenLocker.Lock()
 	defer client.tokenLocker.Unlock()
 
 	if token, ok := client.readCachedAppToken(); ok {
-		client.appToken = token
 		return token, nil
 	}
 
@@ -199,11 +197,10 @@ func (client *Client) AppToken() (string, error) {
 	if result.AppToken == "" {
 		return "", fmt.Errorf("health card app token response is empty")
 	}
-	client.appToken = result.AppToken
 	if err := client.writeCachedAppToken(result.AppToken, result.ExpiresIn); err != nil {
 		return "", err
 	}
-	return client.appToken, nil
+	return result.AppToken, nil
 }
 
 func newRequestID() string {
