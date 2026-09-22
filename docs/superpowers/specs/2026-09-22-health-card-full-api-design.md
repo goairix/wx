@@ -56,8 +56,8 @@ health_card/
   client.go       # Client、配置项、appToken 缓存、模块入口、Call
   common.go       # commonIn/commonOut、APIError、请求封装
   signature.go    # 腾讯签名算法
-  types.go        # 共享的卡片、患者、儿童和授权码结构
   contracts/      # 公共 Caller 接口及 README.md
+  model/          # 领域间共享的卡片、患者、儿童结构及 README.md
   card/           # 健康卡接口及 README.md
   patient/        # 就诊人接口及 README.md
   verification/   # 实人验证接口及 README.md
@@ -87,7 +87,7 @@ client.Notification()
 client.AntiFraud()
 ```
 
-每个领域子包包含自己的客户端、请求/响应 DTO、接口路径常量和方法，并通过 `health_card/contracts.Caller` 接口发起请求。领域子包不关心签名、Token 刷新、HTTP 客户端和腾讯公共响应封装。根包只暴露 `Call(path, request, response)` 作为传输边界，appToken 的互斥锁和缓存仍然封装在根包内部。根客户端的方法会将自身作为 Caller 传给对应子包，整体用法与仓库中 `official.Menu()`、`official.QrCode()`、`open_platform.Code()` 的风格一致。
+每个领域子包包含自己的客户端、请求/响应 DTO、接口路径常量和方法，并通过 `health_card/contracts.Caller` 接口发起请求。确实需要跨领域复用的结构放在 `health_card/model`，避免根包导入子包、子包又导入根包的 Go 循环依赖。领域子包不关心签名、Token 刷新、HTTP 客户端和腾讯公共响应封装。根包只暴露 `Call(path, request, response)` 作为传输边界，appToken 的互斥锁和缓存仍然封装在根包内部。根客户端的方法会将自身作为 Caller 传给对应子包，整体用法与仓库中 `official.Menu()`、`official.QrCode()`、`open_platform.Code()` 的风格一致。
 
 根客户端保留测试和部署所需的配置项：`WithBaseURL`、`WithHTTPClient`、`WithClock`、`WithRequestID`、`WithChannelNum`、关联应用 ID 和关联用户 OpenID；另外增加可注入的 `TokenProvider`。默认 Provider 负责获取并缓存平台 Token，生产环境可以注入中控缓存 Provider，避免多进程同时刷新 Token。
 
@@ -95,7 +95,7 @@ client.AntiFraud()
 
 ### `card`
 
-负责健康卡注册和查询、二维码查询/校验/生成、卡包订单号、医院患者关系绑定，以及测试卡 ID 升级为正式卡 ID。不同接口的响应结构尽量复用共享的 `HealthCard`、`ChildInfo` 等类型；只有接口独有字段才定义在接口 DTO 中。
+负责健康卡注册和查询、二维码查询/校验/生成、卡包订单号、医院患者关系绑定，以及测试卡 ID 升级为正式卡 ID。不同接口的响应结构尽量复用 `model.HealthCard`、`model.ChildInfo` 等共享类型；只有接口独有字段才定义在接口 DTO 中。
 
 ### `patient`
 
@@ -131,7 +131,7 @@ client.AntiFraud()
 
 ## 中文文档要求
 
-`health_card` 根包及每个子包都必须有独立的中文 `README.md`。根包文档说明客户端初始化、`appToken` 与签名处理、模块入口、公共错误、敏感信息边界，并链接各子包文档。`contracts/README.md` 说明 `Caller` 的职责和扩展方式。
+`health_card` 根包及每个子包都必须有独立的中文 `README.md`。根包文档说明客户端初始化、`appToken` 与签名处理、模块入口、公共错误、敏感信息边界，并链接各子包文档。`contracts/README.md` 说明 `Caller` 的职责和扩展方式；`model/README.md` 说明共享结构及各领域如何复用。
 
 每个领域子包的 README 必须逐一列出该包所有公开接口，至少包含：用途、对应的腾讯服务 ID 和原始文档链接、请求/响应的关键字段、是否为出站调用或入站回调，以及可直接体现 `client.<Module>()` 调用风格的 Go 使用示例。对 `notification` 的入站回调需要展示 HTTP handler 如何解析通知；对 `usage` 需要说明前端/HIS 向业务后端提交数据，再由 SDK 上报腾讯。
 
