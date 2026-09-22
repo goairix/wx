@@ -52,18 +52,19 @@
 
 ```text
 health_card/
+  README.md       # 总览、初始化、鉴权及模块导航
   client.go       # Client、配置项、appToken 缓存、模块入口、Call
   common.go       # commonIn/commonOut、APIError、请求封装
   signature.go    # 腾讯签名算法
   types.go        # 共享的卡片、患者、儿童和授权码结构
-  contracts/      # 领域模块使用的公共 Caller 接口
-  card/
-  patient/
-  verification/
-  usage/
-  device/
-  notification/
-  anti_fraud/
+  contracts/      # 公共 Caller 接口及 README.md
+  card/           # 健康卡接口及 README.md
+  patient/        # 就诊人接口及 README.md
+  verification/   # 实人验证接口及 README.md
+  usage/          # 用卡上报接口及 README.md
+  device/         # 自助机接口及 README.md
+  notification/   # 通知与回调及 README.md
+  anti_fraud/     # 防黄牛接口及 README.md
 ```
 
 各领域子包仍然遵循仓库现有的 `New(...)` 加领域方法风格，但由根客户端统一创建和挂载。调用方不需要自己实例化子包：
@@ -128,8 +129,16 @@ client.AntiFraud()
 
 根传输层每次请求生成新的 request ID 和时间戳，将 `commonIn` 与业务请求字段合并后签名，并沿用现有 SDK 对空字段的处理规则。只有 appToken 接口跳过 Token 获取流程。
 
+## 中文文档要求
+
+`health_card` 根包及每个子包都必须有独立的中文 `README.md`。根包文档说明客户端初始化、`appToken` 与签名处理、模块入口、公共错误、敏感信息边界，并链接各子包文档。`contracts/README.md` 说明 `Caller` 的职责和扩展方式。
+
+每个领域子包的 README 必须逐一列出该包所有公开接口，至少包含：用途、对应的腾讯服务 ID 和原始文档链接、请求/响应的关键字段、是否为出站调用或入站回调，以及可直接体现 `client.<Module>()` 调用风格的 Go 使用示例。对 `notification` 的入站回调需要展示 HTTP handler 如何解析通知；对 `usage` 需要说明前端/HIS 向业务后端提交数据，再由 SDK 上报腾讯。
+
+示例使用占位值，不放真实身份证号、手机号、Token 或患者数据。根包和各子包的 README 是本次交付和验收条件，不作为实现完成后的可选补充。
+
 ## 测试和迁移
 
-每个领域都使用 `httptest.Server` 覆盖全部接口路径、代表性的必填/可选请求字段、响应解析和至少一个腾讯业务错误场景。根传输层测试覆盖 TokenProvider 选择、签名、HTTP 错误、非法响应和并发 Token 刷新。README 将改为新的子包构造方式，并补充 `wechatCode`、回调授权码和通知处理的前后端交接示例。
+每个领域都使用 `httptest.Server` 覆盖全部接口路径、代表性的必填/可选请求字段、响应解析和至少一个腾讯业务错误场景。根传输层测试覆盖 TokenProvider 选择、签名、HTTP 错误、非法响应和并发 Token 刷新。逐包核对 README 的接口清单与导出方法一致，并检查全部示例采用 `client.<Module>()` 入口。
 
 新包和测试全部通过后，删除当前根包中按旧场景组织的接口文件。这是已确认的破坏性重构，不增加一层重复的兼容方法和 DTO。
