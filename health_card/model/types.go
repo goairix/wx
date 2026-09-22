@@ -1,7 +1,5 @@
 package model
 
-import "encoding/json"
-
 // ChildInfo 是未成年人健康卡的监护人信息。
 type ChildInfo struct {
 	MotherName         string `json:"motherName,omitempty"`
@@ -55,25 +53,9 @@ type HealthCard struct {
 }
 
 // CardInfoResponse 是包含卡片及本人标记的响应。
-// Relation 同时提供顶层快捷访问；腾讯标准响应通常将它放在 Card.Relation 中。
 type CardInfoResponse struct {
-	IsSelf   bool       `json:"isSelf"`
-	Relation string     `json:"relation,omitempty"`
-	Card     HealthCard `json:"card"`
-}
-
-// UnmarshalJSON 兼容腾讯将 relation 放在 card 内或响应顶层的两种返回结构。
-func (response *CardInfoResponse) UnmarshalJSON(data []byte) error {
-	type cardInfoResponse CardInfoResponse
-	var value cardInfoResponse
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-	if value.Relation == "" {
-		value.Relation = value.Card.Relation
-	}
-	*response = CardInfoResponse(value)
-	return nil
+	IsSelf bool       `json:"isSelf"`
+	Card   HealthCard `json:"card"`
 }
 
 // RegistrationInfo 是建档信息。
