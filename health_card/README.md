@@ -46,4 +46,20 @@ client := health_card.New(appID, appSecret, hospitalID,
 
 如果应用由统一中控管理凭证，可传入实现 `kernel/contracts.AccessTokenProvider` 的对象：`health_card.WithAccessTokenProvider(provider)`（`WithTokenProvider` 亦可）。外部 Provider 优先于 SDK 默认的 `getAppToken` 请求。
 
+## appToken 缓存
+
+默认情况下，客户端使用 `cache.NewMemoryCache()` 和 `lock.Mutex` 管理 appToken。缓存 key 为 `dy.wx.cache.health_card_app_token.<appID>`，有效期会比腾讯返回的过期时间提前 60 秒结束。
+
+生产环境的多实例服务应注入共享缓存和锁：
+
+```go
+client := health_card.New(appID, appSecret, hospitalID,
+	health_card.WithCache(redisCache),
+	health_card.WithCacheKeyPrefix("prod."),
+	health_card.WithLocker(redisLocker),
+)
+```
+
+`WithAppToken` 仍可用于预置已有凭证，SDK 会把它写入配置的缓存；`WithAccessTokenProvider` 的优先级最高，不读写 SDK 内置缓存。
+
 标准健康卡管理页和展码页由腾讯前端组件承载；如果业务自建页面，应使用 `Card()` 中的二维码和查询接口，并由后端完成签名请求。
