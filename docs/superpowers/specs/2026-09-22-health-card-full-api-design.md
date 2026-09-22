@@ -48,14 +48,15 @@
 
 ## 包结构
 
-根包只负责公共传输能力：
+根包既负责公共传输能力，也作为领域模块的统一入口：
 
 ```text
 health_card/
-  client.go       # Client、配置项、appToken 缓存、Caller、Call
+  client.go       # Client、配置项、appToken 缓存、模块入口、Call
   common.go       # commonIn/commonOut、APIError、请求封装
   signature.go    # 腾讯签名算法
   types.go        # 共享的卡片、患者、儿童和授权码结构
+  contracts/      # 领域模块使用的公共 Caller 接口
   card/
   patient/
   verification/
@@ -65,15 +66,27 @@ health_card/
   anti_fraud/
 ```
 
-各领域子包遵循仓库现有的 `New(...)` 加领域方法风格：
+各领域子包仍然遵循仓库现有的 `New(...)` 加领域方法风格，但由根客户端统一创建和挂载。调用方不需要自己实例化子包：
 
 ```go
 client := health_card.New(appID, appSecret, hospitalID)
-cards := card.New(client)
+cards := client.Card()
 result, err := cards.Register(card.RegisterRequest{...})
 ```
 
-每个领域子包包含自己的客户端、请求/响应 DTO、接口路径常量和方法，并通过根包的 `health_card.Caller` 接口发起请求。领域子包不关心签名、Token 刷新、HTTP 客户端和腾讯公共响应封装。根包只暴露 `Call(path, request, response)` 作为传输边界，appToken 的互斥锁和缓存仍然封装在根包内部。
+根客户端提供以下领域入口：
+
+```go
+client.Card()
+client.Patient()
+client.Verification()
+client.Usage()
+client.Device()
+client.Notification()
+client.AntiFraud()
+```
+
+每个领域子包包含自己的客户端、请求/响应 DTO、接口路径常量和方法，并通过 `health_card/contracts.Caller` 接口发起请求。领域子包不关心签名、Token 刷新、HTTP 客户端和腾讯公共响应封装。根包只暴露 `Call(path, request, response)` 作为传输边界，appToken 的互斥锁和缓存仍然封装在根包内部。根客户端的方法会将自身作为 Caller 传给对应子包，整体用法与仓库中 `official.Menu()`、`official.QrCode()`、`open_platform.Code()` 的风格一致。
 
 根客户端保留测试和部署所需的配置项：`WithBaseURL`、`WithHTTPClient`、`WithClock`、`WithRequestID`、`WithChannelNum`、关联应用 ID 和关联用户 OpenID；另外增加可注入的 `TokenProvider`。默认 Provider 负责获取并缓存平台 Token，生产环境可以注入中控缓存 Provider，避免多进程同时刷新 Token。
 
