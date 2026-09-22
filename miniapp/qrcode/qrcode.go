@@ -19,7 +19,9 @@ type Client struct {
 	auth      *auth.Manager
 }
 
-func New(tr *transport.Client, a *auth.Manager) *Client { return &Client{transport: tr, auth: a} }
+func New(tr *transport.Client, a *auth.Manager) *Client {
+	return &Client{transport: tr, auth: a}
+}
 
 type response struct {
 	ErrCode int    `json:"errcode"`
@@ -34,7 +36,16 @@ func (c *Client) Create(ctx context.Context, path string) ([]byte, string, error
 	}
 	var raw []byte
 	meta := &request.ResponseMeta{}
-	err = c.transport.Do(ctx, request.Request{Operation: "miniapp.qrcode.create", Platform: "miniapp", Method: http.MethodPost, Path: "cgi-bin/wxaapp/createwxaqrcode", Query: url.Values{"access_token": {cred.AccessToken}}, Body: map[string]string{"path": path}, Result: &raw, Meta: meta})
+	err = c.transport.Do(ctx, request.Request{
+		Operation: "miniapp.qrcode.create",
+		Platform:  "miniapp",
+		Method:    http.MethodPost,
+		Path:      "cgi-bin/wxaapp/createwxaqrcode",
+		Query:     url.Values{"access_token": {cred.AccessToken}},
+		Body:      map[string]string{"path": path},
+		Result:    &raw,
+		Meta:      meta,
+	})
 	if err != nil {
 		return nil, "", err
 	}
@@ -42,7 +53,14 @@ func (c *Client) Create(ctx context.Context, path string) ([]byte, string, error
 	if strings.HasPrefix(ct, "application/json") {
 		var out response
 		if json.Unmarshal(raw, &out) == nil && out.ErrCode != 0 {
-			return nil, "", &wxerrors.Error{Platform: "miniapp", Operation: "miniapp.qrcode.create", HTTPStatus: meta.StatusCode, Code: fmt.Sprint(out.ErrCode), Message: out.ErrMsg, RequestID: meta.RequestID}
+			return nil, "", &wxerrors.Error{
+				Platform:   "miniapp",
+				Operation:  "miniapp.qrcode.create",
+				HTTPStatus: meta.StatusCode,
+				Code:       fmt.Sprint(out.ErrCode),
+				Message:    out.ErrMsg,
+				RequestID:  meta.RequestID,
+			}
 		}
 	}
 	return raw, ct, nil

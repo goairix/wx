@@ -12,7 +12,9 @@ import (
 
 type Encryptor struct{}
 
-func New() *Encryptor { return &Encryptor{} }
+func New() *Encryptor {
+	return &Encryptor{}
+}
 func (Encryptor) Decrypt(sessionKey, iv, encryptedData string) (map[string]interface{}, error) {
 	key, err := base64.StdEncoding.DecodeString(sessionKey)
 	if err != nil {

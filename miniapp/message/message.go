@@ -17,7 +17,9 @@ type Client struct {
 	auth      *auth.Manager
 }
 
-func New(tr *transport.Client, a *auth.Manager) *Client { return &Client{transport: tr, auth: a} }
+func New(tr *transport.Client, a *auth.Manager) *Client {
+	return &Client{transport: tr, auth: a}
+}
 
 type Message struct {
 	ToUser           string                `json:"touser"`
@@ -63,7 +65,11 @@ type apiEnvelope struct {
 	ErrMsg  string `json:"errmsg"`
 }
 
-func (c *Client) do(ctx context.Context, op, path string, q url.Values, body, result interface{}) error {
+func (e apiEnvelope) platformError() (int, string) {
+	return e.ErrCode, e.ErrMsg
+}
+
+func (c *Client) do(ctx context.Context, method, op, path string, q url.Values, body, result interface{}) error {
 	cred, err := c.auth.Token(ctx)
 	if err != nil {
 		return err
@@ -73,12 +79,31 @@ func (c *Client) do(ctx context.Context, op, path string, q url.Values, body, re
 		q = url.Values{}
 	}
 	q.Set("access_token", cred.AccessToken)
-	err = c.transport.Do(ctx, request.Request{Operation: op, Platform: "miniapp", Method: http.MethodPost, Path: path, Query: q, Body: body, Result: result, Meta: meta})
+	err = c.transport.Do(ctx, request.Request{
+		Operation: op,
+		Platform:  "miniapp",
+		Method:    method,
+		Path:      path,
+		Query:     q,
+		Body:      body,
+		Result:    result,
+		Meta:      meta,
+	})
 	if err != nil {
 		return err
 	}
-	if e, ok := result.(*apiEnvelope); ok && e.ErrCode != 0 {
-		return &wxerrors.Error{Platform: "miniapp", Operation: op, HTTPStatus: meta.StatusCode, Code: fmt.Sprint(e.ErrCode), Message: e.ErrMsg, RequestID: meta.RequestID}
+	if e, ok := result.(interface{ platformError() (int, string) }); ok {
+		code, message := e.platformError()
+		if code != 0 {
+			return &wxerrors.Error{
+				Platform:   "miniapp",
+				Operation:  op,
+				HTTPStatus: meta.StatusCode,
+				Code:       fmt.Sprint(code),
+				Message:    message,
+				RequestID:  meta.RequestID,
+			}
+		}
 	}
 	return nil
 }
@@ -87,11 +112,8 @@ func (c *Client) GetCategory(ctx context.Context) ([]Category, error) {
 		apiEnvelope
 		Data []Category `json:"data"`
 	}
-	if err := c.do(ctx, "miniapp.message.category", "wxaapi/newtmpl/getcategory", nil, nil, &out); err != nil {
+	if err := c.do(ctx, http.MethodGet, "miniapp.message.category", "wxaapi/newtmpl/getcategory", nil, nil, &out); err != nil {
 		return nil, err
-	}
-	if out.ErrCode != 0 {
-		return nil, &wxerrors.Error{Platform: "miniapp", Operation: "miniapp.message.category", Code: fmt.Sprint(out.ErrCode), Message: out.ErrMsg}
 	}
 	return out.Data, nil
 }
@@ -100,11 +122,8 @@ func (c *Client) GetKeywords(ctx context.Context, tid string) ([]Keyword, error)
 		apiEnvelope
 		Data []Keyword `json:"data"`
 	}
-	if err := c.do(ctx, "miniapp.message.keywords", "wxaapi/newtmpl/getpubtemplatekeywords", url.Values{"tid": {tid}}, nil, &out); err != nil {
+	if err := c.do(ctx, http.MethodGet, "miniapp.message.keywords", "wxaapi/newtmpl/getpubtemplatekeywords", url.Values{"tid": {tid}}, nil, &out); err != nil {
 		return nil, err
-	}
-	if out.ErrCode != 0 {
-		return nil, fmt.Errorf("miniapp message: %s", out.ErrMsg)
 	}
 	return out.Data, nil
 }
@@ -113,7 +132,12 @@ func (c *Client) GetPublicTemplates(ctx context.Context, ids string, start, limi
 		apiEnvelope
 		Data []PublicTemplate `json:"data"`
 	}
-	if err := c.do(ctx, "miniapp.message.public_templates", "wxaapi/newtmpl/getpubtemplatetitles", url.Values{"ids": {ids}, "start": {fmt.Sprint(start)}, "limit": {fmt.Sprint(limit)}}, nil, &out); err != nil {
+	query := url.Values{
+		"ids":   {ids},
+		"start": {fmt.Sprint(start)},
+		"limit": {fmt.Sprint(limit)},
+	}
+	if err := c.do(ctx, http.MethodGet, "miniapp.message.public_templates", "wxaapi/newtmpl/getpubtemplatetitles", query, nil, &out); err != nil {
 		return nil, err
 	}
 	return out.Data, nil
@@ -123,7 +147,7 @@ func (c *Client) GetTemplateList(ctx context.Context) ([]PrivateTemplate, error)
 		apiEnvelope
 		Data []PrivateTemplate `json:"data"`
 	}
-	if err := c.do(ctx, "miniapp.message.templates", "wxaapi/newtmpl/gettemplate", nil, nil, &out); err != nil {
+	if err := c.do(ctx, http.MethodGet, "miniapp.message.templates", "wxaapi/newtmpl/gettemplate", nil, nil, &out); err != nil {
 		return nil, err
 	}
 	return out.Data, nil
@@ -133,14 +157,19 @@ func (c *Client) AddTemplate(ctx context.Context, tid string, kidList []int, sce
 		apiEnvelope
 		ID string `json:"priTmplId"`
 	}
-	if err := c.do(ctx, "miniapp.message.add_template", "wxaapi/newtmpl/addtemplate", nil, map[string]interface{}{"tid": tid, "kidList": kidList, "sceneDesc": sceneDesc}, &out); err != nil {
+	body := map[string]interface{}{
+		"tid":       tid,
+		"kidList":   kidList,
+		"sceneDesc": sceneDesc,
+	}
+	if err := c.do(ctx, http.MethodPost, "miniapp.message.add_template", "wxaapi/newtmpl/addtemplate", nil, body, &out); err != nil {
 		return "", err
 	}
 	return out.ID, nil
 }
 func (c *Client) DeleteTemplate(ctx context.Context, id string) error {
 	var out apiEnvelope
-	return c.do(ctx, "miniapp.message.delete_template", "wxaapi/newtmpl/deltemplate", nil, map[string]string{"priTmplId": id}, &out)
+	return c.do(ctx, http.MethodPost, "miniapp.message.delete_template", "wxaapi/newtmpl/deltemplate", nil, map[string]string{"priTmplId": id}, &out)
 }
 func (c *Client) Send(ctx context.Context, m Message) error {
 	if m.ToUser == "" || m.TemplateID == "" {
@@ -153,5 +182,5 @@ func (c *Client) Send(ctx context.Context, m Message) error {
 		m.Lang = "zh_CN"
 	}
 	var out apiEnvelope
-	return c.do(ctx, "miniapp.message.send", "cgi-bin/message/subscribe/send", nil, m, &out)
+	return c.do(ctx, http.MethodPost, "miniapp.message.send", "cgi-bin/message/subscribe/send", nil, m, &out)
 }

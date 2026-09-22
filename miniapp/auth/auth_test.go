@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	wxerrors "github.com/goairix/wx/v2/core/errors"
 	"github.com/goairix/wx/v2/core/transport"
 )
 
@@ -15,7 +16,7 @@ func TestCode2SessionRequestAndError(t *testing.T) {
 		if r.Method != http.MethodGet || r.URL.Path != "/sns/jscode2session" {
 			t.Fatalf("request=%s %s", r.Method, r.URL.Path)
 		}
-		if r.URL.Query().Get("appid") != "app" || r.URL.Query().Get("js_code") != "code" {
+		if r.URL.Query().Get("appid") != "app" || r.URL.Query().Get("secret") != "secret" || r.URL.Query().Get("js_code") != "code" || r.URL.Query().Get("grant_type") != "authorization_code" {
 			t.Fatalf("query=%v", r.URL.Query())
 		}
 		w.Header().Set("X-Request-Id", "rid")
@@ -25,8 +26,9 @@ func TestCode2SessionRequestAndError(t *testing.T) {
 	defer server.Close()
 	a := New(transport.New(server.Client(), server.URL, transport.RetryPolicy{}), Config{AppID: "app", AppSecret: "secret"})
 	_, err := a.Code2Session(context.Background(), "code")
-	if err == nil || !errors.Is(err, context.Canceled) && err.Error() == "" {
-		t.Fatalf("err=%v", err)
+	var platformErr *wxerrors.Error
+	if !errors.As(err, &platformErr) || platformErr.Code != "40013" || platformErr.HTTPStatus != http.StatusOK || platformErr.RequestID != "rid" {
+		t.Fatalf("err=%#v", err)
 	}
 }
 func TestCode2SessionCancellation(t *testing.T) {

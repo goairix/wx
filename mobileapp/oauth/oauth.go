@@ -21,18 +21,11 @@ type Client struct {
 	cache     corecache.Cache
 }
 
-func New(tr *transport.Client, cfg interface{}, cache corecache.Cache) *Client {
-	var c Config
-	switch v := cfg.(type) {
-	case Config:
-		c = v
-	case interface{ Config() Config }:
-		c = v.Config()
-	}
+func New(tr *transport.Client, cfg Config, cache corecache.Cache) *Client {
 	if cache == nil {
 		cache = corecache.NewMemory()
 	}
-	return &Client{transport: tr, config: c, cache: cache}
+	return &Client{transport: tr, config: cfg, cache: cache}
 }
 
 type BaseUserInfo struct {
@@ -47,6 +40,8 @@ type UserInfo struct {
 	Province   string `json:"province"`
 	City       string `json:"city"`
 	Country    string `json:"country"`
+	ErrCode    int    `json:"errcode"`
+	ErrMsg     string `json:"errmsg"`
 }
 type AccessToken struct {
 	AccessToken  string `json:"access_token"`
@@ -61,17 +56,32 @@ type AccessToken struct {
 func (c *Client) exchange(ctx context.Context, op, path string, q url.Values) (AccessToken, error) {
 	var out AccessToken
 	meta := &request.ResponseMeta{}
-	err := c.transport.Do(ctx, request.Request{Operation: op, Platform: "mobileapp", Method: http.MethodGet, Path: path, Query: q, Result: &out, Meta: meta})
+	err := c.transport.Do(ctx, request.Request{
+		Operation: op,
+		Platform:  "mobileapp",
+		Method:    http.MethodGet,
+		Path:      path,
+		Query:     q,
+		Result:    &out,
+		Meta:      meta,
+	})
 	if err != nil {
 		return out, err
 	}
 	if out.ErrCode != 0 || out.AccessToken == "" {
-		return out, &wxerrors.Error{Platform: "mobileapp", Operation: op, HTTPStatus: meta.StatusCode, Code: strconv.Itoa(out.ErrCode), Message: out.ErrMsg, RequestID: meta.RequestID}
+		return out, &wxerrors.Error{
+			Platform:   "mobileapp",
+			Operation:  op,
+			HTTPStatus: meta.StatusCode,
+			Code:       strconv.Itoa(out.ErrCode),
+			Message:    out.ErrMsg,
+			RequestID:  meta.RequestID,
+		}
 	}
 	return out, nil
 }
 func (c *Client) LoginCodeAccessToken(ctx context.Context, code string) (*BaseUserInfo, error) {
-	out, err := c.exchange(ctx, "mobileapp.oauth.token", "sns/oauth2/access_token", url.Values{"appid": {c.config.AppID}, "secret": {c.config.AppSecret}, "code": {code}, "grant_type": {"authorization_code"}})
+	out, err := c.tokenFromCode(ctx, code)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +91,7 @@ func (c *Client) LoginCodeAccessToken(ctx context.Context, code string) (*BaseUs
 	return &BaseUserInfo{OpenID: out.OpenID, UnionID: out.UnionID}, nil
 }
 func (c *Client) TokenFromCode(ctx context.Context, code string) (*AccessToken, error) {
-	out, err := c.exchange(ctx, "mobileapp.oauth.token", "sns/oauth2/access_token", url.Values{"appid": {c.config.AppID}, "secret": {c.config.AppSecret}, "code": {code}, "grant_type": {"authorization_code"}})
+	out, err := c.tokenFromCode(ctx, code)
 	if err != nil {
 		return nil, err
 	}
@@ -89,6 +99,15 @@ func (c *Client) TokenFromCode(ctx context.Context, code string) (*AccessToken, 
 		return nil, err
 	}
 	return &out, nil
+}
+func (c *Client) tokenFromCode(ctx context.Context, code string) (AccessToken, error) {
+	query := url.Values{
+		"appid":      {c.config.AppID},
+		"secret":     {c.config.AppSecret},
+		"code":       {code},
+		"grant_type": {"authorization_code"},
+	}
+	return c.exchange(ctx, "mobileapp.oauth.token", "sns/oauth2/access_token", query)
 }
 func (c *Client) UserInfo(ctx context.Context, openid string) (*UserInfo, error) {
 	token, err := c.accessToken(ctx, openid)
@@ -98,9 +117,27 @@ func (c *Client) UserInfo(ctx context.Context, openid string) (*UserInfo, error)
 	var out UserInfo
 	meta := &request.ResponseMeta{}
 	q := url.Values{"access_token": {token}, "openid": {openid}, "lang": {"zh_CN"}}
-	err = c.transport.Do(ctx, request.Request{Operation: "mobileapp.oauth.userinfo", Platform: "mobileapp", Method: http.MethodGet, Path: "sns/userinfo", Query: q, Result: &out, Meta: meta})
+	err = c.transport.Do(ctx, request.Request{
+		Operation: "mobileapp.oauth.userinfo",
+		Platform:  "mobileapp",
+		Method:    http.MethodGet,
+		Path:      "sns/userinfo",
+		Query:     q,
+		Result:    &out,
+		Meta:      meta,
+	})
 	if err != nil {
 		return nil, err
+	}
+	if out.ErrCode != 0 {
+		return nil, &wxerrors.Error{
+			Platform:   "mobileapp",
+			Operation:  "mobileapp.oauth.userinfo",
+			HTTPStatus: meta.StatusCode,
+			Code:       strconv.Itoa(out.ErrCode),
+			Message:    out.ErrMsg,
+			RequestID:  meta.RequestID,
+		}
 	}
 	return &out, nil
 }
@@ -120,10 +157,18 @@ func (c *Client) accessToken(ctx context.Context, openid string) (string, error)
 		return v, nil
 	}
 	refresh, ok, err := c.cache.Get(ctx, "mobileapp:user:refresh:"+openid)
-	if err != nil || !ok || refresh == "" {
+	if err != nil {
+		return "", err
+	}
+	if !ok || refresh == "" {
 		return "", fmt.Errorf("mobileapp: refresh_access_token expired")
 	}
-	out, e := c.exchange(ctx, "mobileapp.oauth.refresh", "sns/oauth2/refresh_token", url.Values{"appid": {c.config.AppID}, "grant_type": {"refresh_token"}, "refresh_token": {refresh}})
+	query := url.Values{
+		"appid":         {c.config.AppID},
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {refresh},
+	}
+	out, e := c.exchange(ctx, "mobileapp.oauth.refresh", "sns/oauth2/refresh_token", query)
 	if e != nil {
 		return "", e
 	}

@@ -26,25 +26,33 @@ type Session struct {
 	ErrMsg     string `json:"errmsg"`
 }
 
-func New(tr *transport.Client, config interface{}) *Auth {
-	var c Config
-	switch v := config.(type) {
-	case Config:
-		c = v
-	case interface{ Config() Config }:
-		c = v.Config()
-	}
-	return &Auth{transport: tr, config: c}
+func New(tr *transport.Client, config Config) *Auth {
+	return &Auth{transport: tr, config: config}
 }
 func (a *Auth) Code2Session(ctx context.Context, code string) (*Session, error) {
 	var out Session
 	meta := &request.ResponseMeta{}
-	err := a.transport.Do(ctx, request.Request{Operation: "miniapp.auth.code2session", Platform: "miniapp", Method: http.MethodGet, Path: "sns/jscode2session", Query: url.Values{"appid": {a.config.AppID}, "secret": {a.config.AppSecret}, "js_code": {code}, "grant_type": {"authorization_code"}}, Result: &out, Meta: meta})
+	err := a.transport.Do(ctx, request.Request{
+		Operation: "miniapp.auth.code2session",
+		Platform:  "miniapp",
+		Method:    http.MethodGet,
+		Path:      "sns/jscode2session",
+		Query:     url.Values{"appid": {a.config.AppID}, "secret": {a.config.AppSecret}, "js_code": {code}, "grant_type": {"authorization_code"}},
+		Result:    &out,
+		Meta:      meta,
+	})
 	if err != nil {
 		return nil, err
 	}
 	if out.ErrCode != 0 || out.OpenID == "" {
-		return nil, &wxerrors.Error{Platform: "miniapp", Operation: "miniapp.auth.code2session", HTTPStatus: meta.StatusCode, Code: strconv.Itoa(out.ErrCode), Message: out.ErrMsg, RequestID: meta.RequestID}
+		return nil, &wxerrors.Error{
+			Platform:   "miniapp",
+			Operation:  "miniapp.auth.code2session",
+			HTTPStatus: meta.StatusCode,
+			Code:       strconv.Itoa(out.ErrCode),
+			Message:    out.ErrMsg,
+			RequestID:  meta.RequestID,
+		}
 	}
 	return &out, nil
 }
@@ -66,13 +74,30 @@ type TokenResponse struct {
 func FetchToken(ctx context.Context, tr *transport.Client, config Config) (string, time.Time, error) {
 	var out TokenResponse
 	meta := &request.ResponseMeta{}
-	err := tr.Do(ctx, request.Request{Operation: "miniapp.auth.token", Platform: "miniapp", Method: http.MethodGet, Path: "cgi-bin/token", Query: url.Values{"grant_type": {"client_credential"}, "appid": {config.AppID}, "secret": {config.AppSecret}}, Result: &out, Meta: meta})
+	err := tr.Do(ctx, request.Request{
+		Operation: "miniapp.auth.token",
+		Platform:  "miniapp",
+		Method:    http.MethodGet,
+		Path:      "cgi-bin/token",
+		Query:     url.Values{"grant_type": {"client_credential"}, "appid": {config.AppID}, "secret": {config.AppSecret}},
+		Result:    &out,
+		Meta:      meta,
+	})
 	if err != nil {
 		return "", time.Time{}, err
 	}
 	if out.ErrCode != 0 || out.AccessToken == "" {
-		return "", time.Time{}, &wxerrors.Error{Platform: "miniapp", Operation: "miniapp.auth.token", HTTPStatus: meta.StatusCode, Code: strconv.Itoa(out.ErrCode), Message: out.ErrMsg, RequestID: meta.RequestID}
+		return "", time.Time{}, &wxerrors.Error{
+			Platform:   "miniapp",
+			Operation:  "miniapp.auth.token",
+			HTTPStatus: meta.StatusCode,
+			Code:       strconv.Itoa(out.ErrCode),
+			Message:    out.ErrMsg,
+			RequestID:  meta.RequestID,
+		}
 	}
 	return out.AccessToken, time.Now().Add(time.Duration(out.ExpiresIn) * time.Second), nil
 }
-func (a *Auth) String() string { return fmt.Sprintf("miniapp auth (%s)", a.config.AppID) }
+func (a *Auth) String() string {
+	return fmt.Sprintf("miniapp auth (%s)", a.config.AppID)
+}

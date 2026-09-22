@@ -17,7 +17,9 @@ type Client struct {
 	auth      *auth.Manager
 }
 
-func New(tr *transport.Client, a *auth.Manager) *Client { return &Client{transport: tr, auth: a} }
+func New(tr *transport.Client, a *auth.Manager) *Client {
+	return &Client{transport: tr, auth: a}
+}
 
 type PhoneInfo struct {
 	PhoneNumber     string `json:"phoneNumber"`
@@ -41,12 +43,28 @@ func (c *Client) GetPhoneNumber(ctx context.Context, code, openID string) (*Phon
 	}
 	out := new(phoneResponse)
 	meta := &request.ResponseMeta{}
-	err = c.transport.Do(ctx, request.Request{Operation: "miniapp.user.phone", Platform: "miniapp", Method: http.MethodPost, Path: "wxa/business/getuserphonenumber", Query: url.Values{"access_token": {cred.AccessToken}}, Body: map[string]string{"code": code, "openid": openID}, Result: out, Meta: meta})
+	err = c.transport.Do(ctx, request.Request{
+		Operation: "miniapp.user.phone",
+		Platform:  "miniapp",
+		Method:    http.MethodPost,
+		Path:      "wxa/business/getuserphonenumber",
+		Query:     url.Values{"access_token": {cred.AccessToken}},
+		Body:      map[string]string{"code": code, "openid": openID},
+		Result:    out,
+		Meta:      meta,
+	})
 	if err != nil {
 		return nil, err
 	}
 	if out.ErrCode != 0 {
-		return nil, &wxerrors.Error{Platform: "miniapp", Operation: "miniapp.user.phone", HTTPStatus: meta.StatusCode, Code: fmt.Sprint(out.ErrCode), Message: out.ErrMsg, RequestID: meta.RequestID}
+		return nil, &wxerrors.Error{
+			Platform:   "miniapp",
+			Operation:  "miniapp.user.phone",
+			HTTPStatus: meta.StatusCode,
+			Code:       fmt.Sprint(out.ErrCode),
+			Message:    out.ErrMsg,
+			RequestID:  meta.RequestID,
+		}
 	}
 	return &out.PhoneInfo, nil
 }

@@ -17,7 +17,9 @@ type Client struct {
 	auth      *auth.Manager
 }
 
-func New(tr *transport.Client, a *auth.Manager) *Client { return &Client{transport: tr, auth: a} }
+func New(tr *transport.Client, a *auth.Manager) *Client {
+	return &Client{transport: tr, auth: a}
+}
 
 type Scene int
 
@@ -58,6 +60,10 @@ type envelope struct {
 	ErrMsg  string `json:"errmsg"`
 }
 
+func (e envelope) platformError() (int, string) {
+	return e.ErrCode, e.ErrMsg
+}
+
 func (c *Client) call(ctx context.Context, op, path string, body interface{}, out interface{}) error {
 	cred, err := c.auth.Token(ctx)
 	if err != nil {
@@ -65,12 +71,31 @@ func (c *Client) call(ctx context.Context, op, path string, body interface{}, ou
 	}
 	meta := &request.ResponseMeta{}
 	q := url.Values{"access_token": {cred.AccessToken}}
-	err = c.transport.Do(ctx, request.Request{Operation: op, Platform: "miniapp", Method: http.MethodPost, Path: path, Query: q, Body: body, Result: out, Meta: meta})
+	err = c.transport.Do(ctx, request.Request{
+		Operation: op,
+		Platform:  "miniapp",
+		Method:    http.MethodPost,
+		Path:      path,
+		Query:     q,
+		Body:      body,
+		Result:    out,
+		Meta:      meta,
+	})
 	if err != nil {
 		return err
 	}
-	if e, ok := out.(*envelope); ok && e.ErrCode != 0 {
-		return &wxerrors.Error{Platform: "miniapp", Operation: op, HTTPStatus: meta.StatusCode, Code: fmt.Sprint(e.ErrCode), Message: e.ErrMsg, RequestID: meta.RequestID}
+	if e, ok := out.(interface{ platformError() (int, string) }); ok {
+		code, message := e.platformError()
+		if code != 0 {
+			return &wxerrors.Error{
+				Platform:   "miniapp",
+				Operation:  op,
+				HTTPStatus: meta.StatusCode,
+				Code:       fmt.Sprint(code),
+				Message:    message,
+				RequestID:  meta.RequestID,
+			}
+		}
 	}
 	return nil
 }
@@ -79,12 +104,15 @@ func (c *Client) CheckText(ctx context.Context, openid, content string, scene Sc
 		envelope
 		TextResult
 	}
-	err := c.call(ctx, "miniapp.security.check_text", "wxa/msg_sec_check", map[string]interface{}{"version": 2, "openid": openid, "scene": scene, "content": content}, &out)
+	body := map[string]interface{}{
+		"version": 2,
+		"openid":  openid,
+		"scene":   scene,
+		"content": content,
+	}
+	err := c.call(ctx, "miniapp.security.check_text", "wxa/msg_sec_check", body, &out)
 	if err != nil {
 		return TextResult{}, err
-	}
-	if out.ErrCode != 0 {
-		return TextResult{}, &wxerrors.Error{Platform: "miniapp", Operation: "miniapp.security.check_text", Code: fmt.Sprint(out.ErrCode), Message: out.ErrMsg}
 	}
 	return out.TextResult, nil
 }
@@ -93,16 +121,24 @@ func (c *Client) AsyncCheckMedia(ctx context.Context, openid, mediaURL string, m
 		envelope
 		TraceID string `json:"trace_id"`
 	}
-	err := c.call(ctx, "miniapp.security.check_media", "wxa/media_check_async", map[string]interface{}{"version": 2, "openid": openid, "scene": scene, "media_url": mediaURL, "media_type": mediaType}, &out)
+	body := map[string]interface{}{
+		"version":    2,
+		"openid":     openid,
+		"scene":      scene,
+		"media_url":  mediaURL,
+		"media_type": mediaType,
+	}
+	err := c.call(ctx, "miniapp.security.check_media", "wxa/media_check_async", body, &out)
 	if err != nil {
 		return "", err
-	}
-	if out.ErrCode != 0 {
-		return "", &wxerrors.Error{Platform: "miniapp", Operation: "miniapp.security.check_media", Code: fmt.Sprint(out.ErrCode), Message: out.ErrMsg}
 	}
 	return out.TraceID, nil
 }
 func TextSceneError(scene int) string {
-	m := map[int]string{10001: "广告内容", 20001: "时政内容", 20002: "色情内容", 20003: "辱骂内容", 20006: "违法犯罪内容", 20008: "欺诈内容", 20012: "低俗内容", 20013: "版权内容", 21000: "其它"}
+	m := map[int]string{
+		10001: "广告内容", 20001: "时政内容", 20002: "色情内容",
+		20003: "辱骂内容", 20006: "违法犯罪内容", 20008: "欺诈内容",
+		20012: "低俗内容", 20013: "版权内容", 21000: "其它",
+	}
 	return m[scene]
 }

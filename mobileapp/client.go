@@ -39,5 +39,9 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 	}
 	return &Client{config: config, transport: tr, oauth: oauth.New(tr, oauth.Config{AppID: config.AppID, AppSecret: config.AppSecret}, c)}, nil
 }
-func (c *Client) Config() Config       { return c.config }
-func (c *Client) OAuth() *oauth.Client { return c.oauth }
+func (c *Client) Config() Config {
+	return c.config
+}
+func (c *Client) OAuth() *oauth.Client {
+	return c.oauth
+}

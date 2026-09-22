@@ -19,7 +19,9 @@ type Client struct {
 	auth      *auth.Manager
 }
 
-func New(tr *transport.Client, a *auth.Manager) *Client { return &Client{transport: tr, auth: a} }
+func New(tr *transport.Client, a *auth.Manager) *Client {
+	return &Client{transport: tr, auth: a}
+}
 
 type response struct {
 	ErrCode int    `json:"errcode"`
@@ -33,7 +35,16 @@ func (c *Client) call(ctx context.Context, op, path string, body map[string]inte
 	}
 	var raw []byte
 	meta := &request.ResponseMeta{}
-	err = c.transport.Do(ctx, request.Request{Operation: op, Platform: "miniapp", Method: http.MethodPost, Path: path, Query: url.Values{"access_token": {cred.AccessToken}}, Body: body, Result: &raw, Meta: meta})
+	err = c.transport.Do(ctx, request.Request{
+		Operation: op,
+		Platform:  "miniapp",
+		Method:    http.MethodPost,
+		Path:      path,
+		Query:     url.Values{"access_token": {cred.AccessToken}},
+		Body:      body,
+		Result:    &raw,
+		Meta:      meta,
+	})
 	if err != nil {
 		return nil, "", err
 	}
@@ -41,7 +52,14 @@ func (c *Client) call(ctx context.Context, op, path string, body map[string]inte
 	if len(raw) > 0 && strings.HasPrefix(contentType, "application/json") {
 		var out response
 		if err := json.Unmarshal(raw, &out); err == nil && out.ErrCode != 0 {
-			return nil, "", &wxerrors.Error{Platform: "miniapp", Operation: op, HTTPStatus: meta.StatusCode, Code: fmt.Sprint(out.ErrCode), Message: out.ErrMsg, RequestID: meta.RequestID}
+			return nil, "", &wxerrors.Error{
+				Platform:   "miniapp",
+				Operation:  op,
+				HTTPStatus: meta.StatusCode,
+				Code:       fmt.Sprint(out.ErrCode),
+				Message:    out.ErrMsg,
+				RequestID:  meta.RequestID,
+			}
 		}
 	}
 	if !strings.HasPrefix(contentType, "image/") && len(raw) == 0 {

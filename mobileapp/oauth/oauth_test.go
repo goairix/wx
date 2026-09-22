@@ -2,20 +2,23 @@ package oauth
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	corecache "github.com/goairix/wx/v2/core/cache"
+	wxerrors "github.com/goairix/wx/v2/core/errors"
 	"github.com/goairix/wx/v2/core/transport"
 )
 
 func TestTokenFromCodeRequestAndSeparateKeys(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/sns/oauth2/access_token" {
+		if r.Method != http.MethodGet || r.URL.Path != "/sns/oauth2/access_token" {
 			t.Fatalf("path=%s", r.URL.Path)
 		}
-		if r.URL.Query().Get("code") != "c" {
+		if r.URL.Query().Get("appid") != "id" || r.URL.Query().Get("secret") != "secret" || r.URL.Query().Get("code") != "c" || r.URL.Query().Get("grant_type") != "authorization_code" {
 			t.Fatalf("query=%v", r.URL.Query())
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -33,5 +36,26 @@ func TestTokenFromCodeRequestAndSeparateKeys(t *testing.T) {
 	}
 	if v, ok, _ := c.Get(context.Background(), "mobileapp:user:refresh:o"); !ok || v != "r" {
 		t.Fatalf("refresh cache=%q %v", v, ok)
+	}
+}
+
+func TestUserInfoPlatformError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/sns/userinfo" || r.URL.Query().Get("access_token") != "access" || r.URL.Query().Get("openid") != "openid" {
+			t.Errorf("request=%s %s %v", r.Method, r.URL.Path, r.URL.Query())
+		}
+		w.Header().Set("X-Request-Id", "rid")
+		_, _ = w.Write([]byte(`{"errcode":40003,"errmsg":"bad openid"}`))
+	}))
+	defer server.Close()
+	cache := corecache.NewMemory()
+	if err := cache.Put(context.Background(), "mobileapp:user:access:openid", "access", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	client := New(transport.New(server.Client(), server.URL, transport.RetryPolicy{}), Config{AppID: "id", AppSecret: "secret"}, cache)
+	_, err := client.UserInfo(context.Background(), "openid")
+	var apiErr *wxerrors.Error
+	if !errors.As(err, &apiErr) || apiErr.Code != "40003" || apiErr.RequestID != "rid" || apiErr.HTTPStatus != 200 {
+		t.Fatalf("err=%#v", err)
 	}
 }
