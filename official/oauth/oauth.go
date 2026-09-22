@@ -12,7 +12,7 @@ import (
 
 	supportHttp "github.com/goairix/wx/v2/support/http"
 
-	"github.com/pkg/errors"
+	wxerrors "github.com/goairix/wx/v2/core/errors"
 )
 
 const oauthBaseUrl = "https://open.weixin.qq.com/connect/oauth2/authorize"
@@ -98,7 +98,7 @@ func (auth *OAuth) UserFromCode(code string) (*user.User, error) {
 		return nil, err
 	}
 	if result.ErrCode != 0 {
-		return nil, errors.New(result.ErrMsg)
+		return nil, wxerrors.New(result.ErrMsg)
 	}
 
 	return &result.User, nil
@@ -119,7 +119,7 @@ func (auth *OAuth) TokenFromCode(code string) (*AccessTokenResponse, error) {
 	}
 
 	if result.ErrCode != 0 {
-		return nil, errors.New(result.ErrMsg)
+		return nil, wxerrors.New(result.ErrMsg)
 	}
 
 	return &result, nil
