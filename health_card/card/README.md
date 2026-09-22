@@ -13,6 +13,8 @@ qr, err := cards.GetDynamicQRCode(card.GetDynamicQRCodeRequest{HealthCardID: hea
 
 批量注册一次最多 15 人；查询和二维码接口由后端调用，前端只接收业务允许返回的结果。
 
+注意：`GetByHealthCode`（服务 100）的腾讯响应不定义 `relation`，因此该字段为空属于平台接口行为，不是 SDK 解析丢失；`relation` 是 `GetByQRCode`（服务 104）响应中的可选字段。
+
 | 方法 | 服务 ID | 腾讯服务文档 |
 | --- | ---: | --- |
 | `Register` | 99 | [注册健康卡](https://open.tengmed.com/openAccess/ability/detail?sceneId=0&catalogId=21&serviceId=99) |
