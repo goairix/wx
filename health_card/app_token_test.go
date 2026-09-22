@@ -16,7 +16,7 @@ import (
 )
 
 func TestAppTokenCacheOptions(t *testing.T) {
-	client := New("app-id", "secret", "hospital", WithCache(cache.NewMemoryCache()), WithCacheKeyPrefix("custom."), WithLocker(&lock.Mutex{}))
+	client := New("app-id", "secret", "hospital", "related-app", WithCache(cache.NewMemoryCache()), WithCacheKeyPrefix("custom."), WithLocker(&lock.Mutex{}))
 	if got := client.AppTokenCacheKey(); got != "custom.health_card_app_token.app-id" {
 		t.Fatalf("cache key = %q", got)
 	}
@@ -24,8 +24,8 @@ func TestAppTokenCacheOptions(t *testing.T) {
 
 func TestAppTokenCanBeSeededIntoCache(t *testing.T) {
 	c := cache.NewMemoryCache()
-	client := New("app-id", "secret", "hospital", WithCache(c), WithAppToken("seed-token"))
-	other := New("app-id", "secret", "hospital", WithCache(c), WithBaseURL("http://invalid.example"))
+	client := New("app-id", "secret", "hospital", "related-app", WithCache(c), WithAppToken("seed-token"))
+	other := New("app-id", "secret", "hospital", "related-app", WithCache(c), WithBaseURL("http://invalid.example"))
 	got, err := other.AppToken()
 	if err != nil || got != "seed-token" {
 		t.Fatalf("token=%q err=%v", got, err)
@@ -44,7 +44,7 @@ func TestAppTokenConcurrentRefreshUsesOneRequest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New("app-id", "secret", "hospital", WithBaseURL(server.URL), WithRequestID(func() string { return "rid" }))
+	client := New("app-id", "secret", "hospital", "related-app", WithBaseURL(server.URL), WithRequestID(func() string { return "rid" }))
 	var wg sync.WaitGroup
 	errs := make(chan error, 8)
 	for i := 0; i < 8; i++ {
@@ -82,14 +82,14 @@ func TestAppTokenFetchesAndCaches(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
-		if body.CommonIn.AppToken != "" || body.Req.AppID != "app-id" || body.CommonIn.Sign == "" {
+		if body.CommonIn.AppToken != "" || body.CommonIn.RelateAppID != "related-app" || body.Req.AppID != "app-id" || body.CommonIn.Sign == "" {
 			t.Fatalf("unexpected request: %+v", body)
 		}
 		_, _ = io.WriteString(w, `{"commonOut":{"requestId":"rid","resultCode":0,"errMsg":"成功"},"rsp":{"appToken":"fresh-token","expiresIn":7200}}`)
 	}))
 	defer server.Close()
 
-	client := New("app-id", "secret", "hospital", WithBaseURL(server.URL), WithClock(func() time.Time { return time.Unix(1000, 0) }), WithRequestID(func() string { return "rid" }))
+	client := New("app-id", "secret", "hospital", "related-app", WithBaseURL(server.URL), WithClock(func() time.Time { return time.Unix(1000, 0) }), WithRequestID(func() string { return "rid" }))
 	first, err := client.AppToken()
 	if err != nil {
 		t.Fatal(err)
@@ -112,7 +112,7 @@ func TestAppTokenRefreshesAfterExpiry(t *testing.T) {
 	defer server.Close()
 
 	now := time.Unix(1000, 0)
-	client := New("app-id", "secret", "hospital", WithBaseURL(server.URL), WithClock(func() time.Time { return now }), WithRequestID(func() string { return "rid" }))
+	client := New("app-id", "secret", "hospital", "related-app", WithBaseURL(server.URL), WithClock(func() time.Time { return now }), WithRequestID(func() string { return "rid" }))
 	first, err := client.AppToken()
 	if err != nil {
 		t.Fatal(err)

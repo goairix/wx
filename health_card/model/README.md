@@ -5,6 +5,6 @@
 业务调用示例：
 
 ```go
-client := health_card.New(appID, appSecret, hospitalID)
+client := health_card.New(appID, appSecret, hospitalID, relateAppID)
 result, err := client.Card().GetByHealthCode("health-code")
 ```

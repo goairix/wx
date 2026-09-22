@@ -8,7 +8,7 @@ import (
 	"github.com/goairix/wx/health_card/card"
 )
 
-client := health_card.New(appID, appSecret, hospitalID)
+client := health_card.New(appID, appSecret, hospitalID, relateAppID)
 cards := client.Card()
 result, err := cards.Register(card.RegisterRequest{
 	WechatCode: wechatCode, Name: "张三", Gender: "男", Nation: "汉族",
@@ -37,7 +37,7 @@ result, err := cards.Register(card.RegisterRequest{
 ## 配置与错误
 
 ```go
-client := health_card.New(appID, appSecret, hospitalID,
+client := health_card.New(appID, appSecret, hospitalID, relateAppID,
 	health_card.WithChannelNum(0),
 	health_card.WithRelatedAppID(relatedAppID),
 	health_card.WithRelatedOpenID(relatedOpenID),
@@ -55,7 +55,7 @@ client := health_card.New(appID, appSecret, hospitalID,
 生产环境的多实例服务应注入共享缓存和锁：
 
 ```go
-client := health_card.New(appID, appSecret, hospitalID,
+client := health_card.New(appID, appSecret, hospitalID, relateAppID,
 	health_card.WithCache(redisCache),
 	health_card.WithCacheKeyPrefix("prod."),
 	health_card.WithLocker(redisLocker),

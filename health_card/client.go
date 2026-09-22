@@ -105,7 +105,7 @@ func WithAppToken(appToken string) Option {
 	return func(client *Client) { client.initialAppToken = appToken }
 }
 
-// WithRelatedAppID 设置关联的小程序或公众号 AppID（可选）。
+// WithRelatedAppID 覆盖关联的小程序或公众号 AppID。
 func WithRelatedAppID(appID string) Option {
 	return func(client *Client) { client.relateAppID = appID }
 }
@@ -134,11 +134,13 @@ func WithRequestID(requestID func() string) Option {
 }
 
 // New 创建腾讯电子健康卡根客户端。
-func New(appID, appSecret, hospitalID string, opts ...Option) *Client {
+// relateAppID 是实际承载健康卡流程的小程序或公众号 AppID，应与前端获取 wechatCode 的应用一致。
+func New(appID, appSecret, hospitalID, relateAppID string, opts ...Option) *Client {
 	client := &Client{
 		appID:               appID,
 		appSecret:           appSecret,
 		hospitalID:          hospitalID,
+		relateAppID:         relateAppID,
 		baseURL:             defaultBaseURL,
 		channelNum:          0,
 		httpClient:          http.DefaultClient,

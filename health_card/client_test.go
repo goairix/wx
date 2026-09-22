@@ -22,7 +22,7 @@ func TestRootTransportAndFacades(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New("app", "secret", "hospital", WithBaseURL(server.URL))
+	client := New("app", "secret", "hospital", "related-app", WithBaseURL(server.URL))
 	if _, ok := interface{}(client).(interface {
 		Call(string, interface{}, interface{}) error
 	}); !ok {
@@ -35,7 +35,7 @@ func TestRootTransportAndFacades(t *testing.T) {
 
 func TestExternalTokenProvider(t *testing.T) {
 	provider := &testTokenProvider{}
-	client := New("app", "secret", "hospital", WithTokenProvider(provider))
+	client := New("app", "secret", "hospital", "related-app", WithTokenProvider(provider))
 	if got, err := client.AppToken(); err != nil || got != "external-token" || provider.calls != 1 {
 		t.Fatalf("token=%q calls=%d err=%v", got, provider.calls, err)
 	}

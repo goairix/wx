@@ -70,7 +70,7 @@ health_card/
 各领域子包仍然遵循仓库现有的 `New(...)` 加领域方法风格，但由根客户端统一创建和挂载。调用方不需要自己实例化子包：
 
 ```go
-client := health_card.New(appID, appSecret, hospitalID)
+client := health_card.New(appID, appSecret, hospitalID, relateAppID)
 cards := client.Card()
 result, err := cards.Register(card.RegisterRequest{...})
 ```
