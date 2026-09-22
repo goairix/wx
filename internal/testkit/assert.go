@@ -43,10 +43,10 @@ func jsonSourceBytes(source interface{}) ([]byte, error) {
 			return nil, fmt.Errorf("request body is nil")
 		}
 		body, err := io.ReadAll(value.Body)
-		if err == nil {
-			_ = value.Body.Close()
-			value.Body = io.NopCloser(bytes.NewReader(body))
-		}
+		// Always close the original body and restore the bytes read so callers can
+		// inspect or reuse the request even when reading fails partway through.
+		_ = value.Body.Close()
+		value.Body = io.NopCloser(bytes.NewReader(body))
 		return body, err
 	case RecordedRequest:
 		return value.Body, nil
