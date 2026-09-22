@@ -26,7 +26,8 @@ func TestCode2SessionRequestAndError(t *testing.T) {
 		_, _ = w.Write([]byte(`{"errcode":40013,"errmsg":"bad appid"}`))
 	}))
 	defer server.Close()
-	a := New(transport.New(server.Client(), server.URL, transport.RetryPolicy{}), Config{AppID: "app", AppSecret: "secret"})
+	tr := transport.New(server.Client(), server.URL, transport.RetryPolicy{})
+	a := New(tr, Config{AppID: "app", AppSecret: "secret"})
 	_, err := a.Code2Session(context.Background(), "code")
 	var platformErr *wxerrors.Error
 	if !errors.As(err, &platformErr) || platformErr.Code != "40013" ||
@@ -38,7 +39,8 @@ func TestCode2SessionRequestAndError(t *testing.T) {
 func TestCode2SessionCancellation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
 	defer server.Close()
-	a := New(transport.New(server.Client(), server.URL, transport.RetryPolicy{}), Config{AppID: "app", AppSecret: "secret"})
+	tr := transport.New(server.Client(), server.URL, transport.RetryPolicy{})
+	a := New(tr, Config{AppID: "app", AppSecret: "secret"})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := a.Code2Session(ctx, "code")

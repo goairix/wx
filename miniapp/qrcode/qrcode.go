@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -49,8 +50,9 @@ func (c *Client) Create(ctx context.Context, path string) ([]byte, string, error
 	if err != nil {
 		return nil, "", err
 	}
-	ct := meta.Header.Get("Content-Type")
-	if strings.HasPrefix(ct, "application/json") {
+	contentType := meta.Header.Get("Content-Type")
+	mediaType, _, _ := mime.ParseMediaType(contentType)
+	if mediaType == "application/json" {
 		var out response
 		if json.Unmarshal(raw, &out) == nil && out.ErrCode != 0 {
 			return nil, "", &wxerrors.Error{
@@ -62,8 +64,12 @@ func (c *Client) Create(ctx context.Context, path string) ([]byte, string, error
 				RequestID:  meta.RequestID,
 			}
 		}
+		return nil, "", wxerrors.New("miniapp qrcode: invalid JSON response")
 	}
-	return raw, ct, nil
+	if !strings.HasPrefix(mediaType, "image/") || len(raw) == 0 {
+		return nil, "", wxerrors.New("miniapp qrcode: expected non-empty image response")
+	}
+	return raw, contentType, nil
 }
 
 func (c *Client) CreateQRCode(ctx context.Context, path string) ([]byte, string, error) {

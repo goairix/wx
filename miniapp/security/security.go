@@ -121,7 +121,12 @@ func (c *Client) CheckText(ctx context.Context, openid, content string, scene Sc
 	return out.TextResult, nil
 }
 
-func (c *Client) AsyncCheckMedia(ctx context.Context, openid, mediaURL string, mediaType MediaType, scene Scene) (string, error) {
+func (c *Client) AsyncCheckMedia(
+	ctx context.Context,
+	openid, mediaURL string,
+	mediaType MediaType,
+	scene Scene,
+) (string, error) {
 	var out struct {
 		envelope
 		TraceID string `json:"trace_id"`

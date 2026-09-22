@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -49,7 +50,8 @@ func (c *Client) call(ctx context.Context, op, path string, body map[string]inte
 		return nil, "", err
 	}
 	contentType := meta.Header.Get("Content-Type")
-	if len(raw) > 0 && strings.HasPrefix(contentType, "application/json") {
+	mediaType, _, _ := mime.ParseMediaType(contentType)
+	if mediaType == "application/json" {
 		var out response
 		if err := json.Unmarshal(raw, &out); err == nil && out.ErrCode != 0 {
 			return nil, "", &wxerrors.Error{
@@ -61,9 +63,10 @@ func (c *Client) call(ctx context.Context, op, path string, body map[string]inte
 				RequestID:  meta.RequestID,
 			}
 		}
+		return nil, "", wxerrors.New("miniapp wxacode: invalid JSON response")
 	}
-	if !strings.HasPrefix(contentType, "image/") && len(raw) == 0 {
-		return nil, "", wxerrors.New("miniapp wxacode: empty response")
+	if !strings.HasPrefix(mediaType, "image/") || len(raw) == 0 {
+		return nil, "", wxerrors.New("miniapp wxacode: expected non-empty image response")
 	}
 	return raw, contentType, nil
 }

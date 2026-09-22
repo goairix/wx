@@ -28,9 +28,11 @@ func TestCheckTextRequestAndStructuredError(t *testing.T) {
 		_, _ = w.Write([]byte(`{"errcode":40014,"errmsg":"bad token"}`))
 	}))
 	defer server.Close()
-	manager := auth.NewManager("miniapp", "sec", cache.NewMemory(), auth.ProviderFunc(func(context.Context) (auth.Credential, error) {
-		return auth.Credential{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour)}, nil
-	}))
+	manager := auth.NewManager(
+		"miniapp", "sec", cache.NewMemory(),
+		auth.ProviderFunc(func(context.Context) (auth.Credential, error) {
+			return auth.Credential{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour)}, nil
+		}))
 	client := New(transport.New(server.Client(), server.URL, transport.RetryPolicy{}), manager)
 	_, err := client.CheckText(context.Background(), "open", "text", Comment)
 	var apiErr *wxerrors.Error

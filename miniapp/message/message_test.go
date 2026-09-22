@@ -17,17 +17,22 @@ import (
 
 func TestCategoryUsesGetAndStructuredError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/wxaapi/newtmpl/getcategory" || r.URL.Query().Get("access_token") != "token" {
+		if r.Method != http.MethodGet ||
+			r.URL.Path != "/wxaapi/newtmpl/getcategory" ||
+			r.URL.Query().Get("access_token") != "token" {
 			t.Errorf("request=%s %s %v", r.Method, r.URL.Path, r.URL.Query())
 		}
 		w.Header().Set("X-Request-Id", "rid")
 		_, _ = w.Write([]byte(`{"errcode":40014,"errmsg":"expired"}`))
 	}))
 	defer server.Close()
-	manager := auth.NewManager("miniapp", "msg", cache.NewMemory(), auth.ProviderFunc(func(context.Context) (auth.Credential, error) {
-		return auth.Credential{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour)}, nil
-	}))
-	_, err := New(transport.New(server.Client(), server.URL, transport.RetryPolicy{}), manager).GetCategory(context.Background())
+	manager := auth.NewManager(
+		"miniapp", "msg", cache.NewMemory(),
+		auth.ProviderFunc(func(context.Context) (auth.Credential, error) {
+			return auth.Credential{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour)}, nil
+		}))
+	client := New(transport.New(server.Client(), server.URL, transport.RetryPolicy{}), manager)
+	_, err := client.GetCategory(context.Background())
 	var apiErr *wxerrors.Error
 	if !errors.As(err, &apiErr) || apiErr.Code != "40014" || apiErr.HTTPStatus != 200 || apiErr.RequestID != "rid" {
 		t.Fatalf("err=%#v", err)
@@ -36,7 +41,9 @@ func TestCategoryUsesGetAndStructuredError(t *testing.T) {
 
 func TestSendUsesPostAndStructuredError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/cgi-bin/message/subscribe/send" || r.URL.Query().Get("access_token") != "token" {
+		if r.Method != http.MethodPost ||
+			r.URL.Path != "/cgi-bin/message/subscribe/send" ||
+			r.URL.Query().Get("access_token") != "token" {
 			t.Errorf("request=%s %s %v", r.Method, r.URL.Path, r.URL.Query())
 		}
 		var body map[string]interface{}
@@ -46,9 +53,11 @@ func TestSendUsesPostAndStructuredError(t *testing.T) {
 		_, _ = w.Write([]byte(`{"errcode":40003,"errmsg":"bad openid"}`))
 	}))
 	defer server.Close()
-	manager := auth.NewManager("miniapp", "msgsend", cache.NewMemory(), auth.ProviderFunc(func(context.Context) (auth.Credential, error) {
-		return auth.Credential{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour)}, nil
-	}))
+	manager := auth.NewManager(
+		"miniapp", "msgsend", cache.NewMemory(),
+		auth.ProviderFunc(func(context.Context) (auth.Credential, error) {
+			return auth.Credential{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour)}, nil
+		}))
 	client := New(transport.New(server.Client(), server.URL, transport.RetryPolicy{}), manager)
 	err := client.Send(context.Background(), Message{ToUser: "u", TemplateID: "t"})
 	var apiErr *wxerrors.Error

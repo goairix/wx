@@ -161,14 +161,14 @@ func (c *Client) UserFromCode(ctx context.Context, code string) (*UserInfo, erro
 }
 
 func (c *Client) accessToken(ctx context.Context, openid string) (string, error) {
-	v, ok, err := c.cache.Get(ctx, "mobileapp:user:access:"+openid)
+	v, ok, err := c.cache.Get(ctx, c.cacheKey("access", openid))
 	if err != nil {
 		return "", err
 	}
 	if ok && v != "" {
 		return v, nil
 	}
-	refresh, ok, err := c.cache.Get(ctx, "mobileapp:user:refresh:"+openid)
+	refresh, ok, err := c.cache.Get(ctx, c.cacheKey("refresh", openid))
 	if err != nil {
 		return "", err
 	}
@@ -195,8 +195,13 @@ func (c *Client) store(ctx context.Context, out AccessToken) error {
 	if ttl <= 0 {
 		ttl = time.Hour
 	}
-	if err := c.cache.Put(ctx, "mobileapp:user:access:"+out.OpenID, out.AccessToken, ttl); err != nil {
+	if err := c.cache.Put(ctx, c.cacheKey("access", out.OpenID), out.AccessToken, ttl); err != nil {
 		return err
 	}
-	return c.cache.Put(ctx, "mobileapp:user:refresh:"+out.OpenID, out.RefreshToken, 4*time.Hour)
+	return c.cache.Put(ctx, c.cacheKey("refresh", out.OpenID), out.RefreshToken, 4*time.Hour)
+}
+
+func (c *Client) cacheKey(kind, openid string) string {
+	return "mobileapp:user:" + strconv.Itoa(len(c.config.AppID)) + ":" + c.config.AppID +
+		":" + kind + ":" + strconv.Itoa(len(openid)) + ":" + openid
 }

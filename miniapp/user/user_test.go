@@ -17,7 +17,9 @@ import (
 
 func TestGetPhoneNumberRequestAndError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/wxa/business/getuserphonenumber" || r.URL.Query().Get("access_token") != "token" {
+		if r.Method != http.MethodPost ||
+			r.URL.Path != "/wxa/business/getuserphonenumber" ||
+			r.URL.Query().Get("access_token") != "token" {
 			t.Errorf("request=%s %s %v", r.Method, r.URL.Path, r.URL.Query())
 		}
 		var body map[string]string
@@ -28,9 +30,11 @@ func TestGetPhoneNumberRequestAndError(t *testing.T) {
 		_, _ = w.Write([]byte(`{"errcode":40013,"errmsg":"invalid"}`))
 	}))
 	defer server.Close()
-	manager := auth.NewManager("miniapp", "test", cache.NewMemory(), auth.ProviderFunc(func(context.Context) (auth.Credential, error) {
-		return auth.Credential{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour)}, nil
-	}))
+	manager := auth.NewManager(
+		"miniapp", "test", cache.NewMemory(),
+		auth.ProviderFunc(func(context.Context) (auth.Credential, error) {
+			return auth.Credential{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour)}, nil
+		}))
 	client := New(transport.New(server.Client(), server.URL, transport.RetryPolicy{}), manager)
 	_, err := client.GetPhoneNumber(context.Background(), "code", "openid")
 	var apiErr *wxerrors.Error
