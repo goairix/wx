@@ -79,6 +79,12 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 				return ctxErr
 			}
 			lastErr = doErr
+			if attempt < policy.MaxAttempts {
+				if err := waitBackoff(ctx, policy.Backoff(attempt)); err != nil {
+					return err
+				}
+				continue
+			}
 			break
 		}
 		responseBody, readErr := io.ReadAll(response.Body)
@@ -132,17 +138,50 @@ func resolveURL(base, path string, query url.Values) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parse request path: %w", err)
 	}
-	resolved := baseURL.ResolveReference(pathURL)
-	if query != nil {
-		merged := resolved.Query()
-		for key, values := range query {
-			for _, value := range values {
-				merged.Add(key, value)
-			}
+	pathQuery := pathURL.Query()
+	if pathURL.IsAbs() {
+		baseURL = pathURL
+		pathQuery = nil
+	} else {
+		// ResolveReference treats a leading slash as an absolute path and drops
+		// the base path. APIs commonly use a base prefix such as /v1, so join
+		// escaped paths explicitly while preserving encoded path segments.
+		basePath := strings.TrimRight(baseURL.EscapedPath(), "/")
+		requestPath := pathURL.EscapedPath()
+		if requestPath == "" {
+			requestPath = "/"
 		}
-		resolved.RawQuery = merged.Encode()
+		if !strings.HasPrefix(requestPath, "/") {
+			requestPath = "/" + requestPath
+		}
+		joinedPath := basePath + requestPath
+		baseURL.Path, err = url.PathUnescape(joinedPath)
+		if err != nil {
+			return "", fmt.Errorf("unescape request path: %w", err)
+		}
+		if escaped := baseURL.EscapedPath(); escaped != joinedPath {
+			baseURL.RawPath = joinedPath
+		} else {
+			baseURL.RawPath = ""
+		}
 	}
-	return resolved.String(), nil
+	merged := baseURL.Query()
+	for key, values := range pathQuery {
+		for _, value := range values {
+			merged.Add(key, value)
+		}
+	}
+	for key, values := range query {
+		for _, value := range values {
+			merged.Add(key, value)
+		}
+	}
+	if len(merged) > 0 {
+		baseURL.RawQuery = merged.Encode()
+	} else {
+		baseURL.RawQuery = ""
+	}
+	return baseURL.String(), nil
 }
 
 func encodeBody(body interface{}) ([]byte, error) {
