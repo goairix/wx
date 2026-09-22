@@ -16,7 +16,9 @@ func TestCode2SessionRequestAndError(t *testing.T) {
 		if r.Method != http.MethodGet || r.URL.Path != "/sns/jscode2session" {
 			t.Fatalf("request=%s %s", r.Method, r.URL.Path)
 		}
-		if r.URL.Query().Get("appid") != "app" || r.URL.Query().Get("secret") != "secret" || r.URL.Query().Get("js_code") != "code" || r.URL.Query().Get("grant_type") != "authorization_code" {
+		query := r.URL.Query()
+		if query.Get("appid") != "app" || query.Get("secret") != "secret" ||
+			query.Get("js_code") != "code" || query.Get("grant_type") != "authorization_code" {
 			t.Fatalf("query=%v", r.URL.Query())
 		}
 		w.Header().Set("X-Request-Id", "rid")
@@ -27,10 +29,12 @@ func TestCode2SessionRequestAndError(t *testing.T) {
 	a := New(transport.New(server.Client(), server.URL, transport.RetryPolicy{}), Config{AppID: "app", AppSecret: "secret"})
 	_, err := a.Code2Session(context.Background(), "code")
 	var platformErr *wxerrors.Error
-	if !errors.As(err, &platformErr) || platformErr.Code != "40013" || platformErr.HTTPStatus != http.StatusOK || platformErr.RequestID != "rid" {
+	if !errors.As(err, &platformErr) || platformErr.Code != "40013" ||
+		platformErr.HTTPStatus != http.StatusOK || platformErr.RequestID != "rid" {
 		t.Fatalf("err=%#v", err)
 	}
 }
+
 func TestCode2SessionCancellation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
 	defer server.Close()

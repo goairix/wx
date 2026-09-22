@@ -65,6 +65,7 @@ func (c *Client) Create(ctx context.Context, path string) ([]byte, string, error
 	}
 	return raw, ct, nil
 }
+
 func (c *Client) CreateQRCode(ctx context.Context, path string) ([]byte, string, error) {
 	return c.Create(ctx, path)
 }

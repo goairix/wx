@@ -41,6 +41,7 @@ type Result struct {
 	Suggest string `json:"suggest"`
 	Label   int    `json:"label"`
 }
+
 type Detail struct {
 	Strategy string `json:"strategy"`
 	ErrCode  int    `json:"errcode"`
@@ -50,11 +51,13 @@ type Detail struct {
 	Prob     int    `json:"prob"`
 	Keyword  string `json:"keyword"`
 }
+
 type TextResult struct {
 	TraceID string   `json:"trace_id"`
 	Result  Result   `json:"result"`
 	Detail  []Detail `json:"detail"`
 }
+
 type envelope struct {
 	ErrCode int    `json:"errcode"`
 	ErrMsg  string `json:"errmsg"`
@@ -99,6 +102,7 @@ func (c *Client) call(ctx context.Context, op, path string, body interface{}, ou
 	}
 	return nil
 }
+
 func (c *Client) CheckText(ctx context.Context, openid, content string, scene Scene) (TextResult, error) {
 	var out struct {
 		envelope
@@ -116,6 +120,7 @@ func (c *Client) CheckText(ctx context.Context, openid, content string, scene Sc
 	}
 	return out.TextResult, nil
 }
+
 func (c *Client) AsyncCheckMedia(ctx context.Context, openid, mediaURL string, mediaType MediaType, scene Scene) (string, error) {
 	var out struct {
 		envelope
@@ -134,6 +139,7 @@ func (c *Client) AsyncCheckMedia(ctx context.Context, openid, mediaURL string, m
 	}
 	return out.TraceID, nil
 }
+
 func TextSceneError(scene int) string {
 	m := map[int]string{
 		10001: "广告内容", 20001: "时政内容", 20002: "色情内容",

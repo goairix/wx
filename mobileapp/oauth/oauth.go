@@ -14,7 +14,11 @@ import (
 	"github.com/goairix/wx/v2/core/transport"
 )
 
-type Config struct{ AppID, AppSecret string }
+type Config struct {
+	AppID     string
+	AppSecret string
+}
+
 type Client struct {
 	transport *transport.Client
 	config    Config
@@ -32,6 +36,7 @@ type BaseUserInfo struct {
 	OpenID  string `json:"openid"`
 	UnionID string `json:"unionid"`
 }
+
 type UserInfo struct {
 	BaseUserInfo
 	Nickname   string `json:"nickname"`
@@ -43,6 +48,7 @@ type UserInfo struct {
 	ErrCode    int    `json:"errcode"`
 	ErrMsg     string `json:"errmsg"`
 }
+
 type AccessToken struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
@@ -80,6 +86,7 @@ func (c *Client) exchange(ctx context.Context, op, path string, q url.Values) (A
 	}
 	return out, nil
 }
+
 func (c *Client) LoginCodeAccessToken(ctx context.Context, code string) (*BaseUserInfo, error) {
 	out, err := c.tokenFromCode(ctx, code)
 	if err != nil {
@@ -90,6 +97,7 @@ func (c *Client) LoginCodeAccessToken(ctx context.Context, code string) (*BaseUs
 	}
 	return &BaseUserInfo{OpenID: out.OpenID, UnionID: out.UnionID}, nil
 }
+
 func (c *Client) TokenFromCode(ctx context.Context, code string) (*AccessToken, error) {
 	out, err := c.tokenFromCode(ctx, code)
 	if err != nil {
@@ -100,6 +108,7 @@ func (c *Client) TokenFromCode(ctx context.Context, code string) (*AccessToken, 
 	}
 	return &out, nil
 }
+
 func (c *Client) tokenFromCode(ctx context.Context, code string) (AccessToken, error) {
 	query := url.Values{
 		"appid":      {c.config.AppID},
@@ -109,6 +118,7 @@ func (c *Client) tokenFromCode(ctx context.Context, code string) (AccessToken, e
 	}
 	return c.exchange(ctx, "mobileapp.oauth.token", "sns/oauth2/access_token", query)
 }
+
 func (c *Client) UserInfo(ctx context.Context, openid string) (*UserInfo, error) {
 	token, err := c.accessToken(ctx, openid)
 	if err != nil {
@@ -141,6 +151,7 @@ func (c *Client) UserInfo(ctx context.Context, openid string) (*UserInfo, error)
 	}
 	return &out, nil
 }
+
 func (c *Client) UserFromCode(ctx context.Context, code string) (*UserInfo, error) {
 	t, err := c.TokenFromCode(ctx, code)
 	if err != nil {
@@ -148,6 +159,7 @@ func (c *Client) UserFromCode(ctx context.Context, code string) (*UserInfo, erro
 	}
 	return c.UserInfo(ctx, t.OpenID)
 }
+
 func (c *Client) accessToken(ctx context.Context, openid string) (string, error) {
 	v, ok, err := c.cache.Get(ctx, "mobileapp:user:access:"+openid)
 	if err != nil {
@@ -177,6 +189,7 @@ func (c *Client) accessToken(ctx context.Context, openid string) (string, error)
 	}
 	return out.AccessToken, nil
 }
+
 func (c *Client) store(ctx context.Context, out AccessToken) error {
 	ttl := time.Duration(out.ExpiresIn) * time.Second
 	if ttl <= 0 {

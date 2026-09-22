@@ -29,25 +29,30 @@ type Message struct {
 	MiniProgramState string                `json:"miniprogram_state,omitempty"`
 	Lang             string                `json:"lang,omitempty"`
 }
+
 type DataValue struct {
 	Value string `json:"value"`
 }
+
 type Category struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
+
 type Keyword struct {
 	TID     string `json:"tid"`
 	Name    string `json:"name"`
 	Example string `json:"example"`
 	Rule    string `json:"rule"`
 }
+
 type PublicTemplate struct {
 	TID        string `json:"tid"`
 	Title      string `json:"title"`
 	Type       int    `json:"type"`
 	CategoryID string `json:"categoryId"`
 }
+
 type PrivateTemplate struct {
 	PrivateTemplateID    string             `json:"priTmplId"`
 	Title                string             `json:"title"`
@@ -56,10 +61,12 @@ type PrivateTemplate struct {
 	Type                 int                `json:"type"`
 	KeywordEnumValueList []KeywordEnumValue `json:"keywordEnumValueList"`
 }
+
 type KeywordEnumValue struct {
 	EnumValueList []string `json:"enumValueList"`
 	KeywordCode   string   `json:"keywordCode"`
 }
+
 type apiEnvelope struct {
 	ErrCode int    `json:"errcode"`
 	ErrMsg  string `json:"errmsg"`
@@ -107,26 +114,35 @@ func (c *Client) do(ctx context.Context, method, op, path string, q url.Values, 
 	}
 	return nil
 }
+
 func (c *Client) GetCategory(ctx context.Context) ([]Category, error) {
 	var out struct {
 		apiEnvelope
 		Data []Category `json:"data"`
 	}
-	if err := c.do(ctx, http.MethodGet, "miniapp.message.category", "wxaapi/newtmpl/getcategory", nil, nil, &out); err != nil {
+	if err := c.do(
+		ctx, http.MethodGet, "miniapp.message.category",
+		"wxaapi/newtmpl/getcategory", nil, nil, &out,
+	); err != nil {
 		return nil, err
 	}
 	return out.Data, nil
 }
+
 func (c *Client) GetKeywords(ctx context.Context, tid string) ([]Keyword, error) {
 	var out struct {
 		apiEnvelope
 		Data []Keyword `json:"data"`
 	}
-	if err := c.do(ctx, http.MethodGet, "miniapp.message.keywords", "wxaapi/newtmpl/getpubtemplatekeywords", url.Values{"tid": {tid}}, nil, &out); err != nil {
+	if err := c.do(
+		ctx, http.MethodGet, "miniapp.message.keywords",
+		"wxaapi/newtmpl/getpubtemplatekeywords", url.Values{"tid": {tid}}, nil, &out,
+	); err != nil {
 		return nil, err
 	}
 	return out.Data, nil
 }
+
 func (c *Client) GetPublicTemplates(ctx context.Context, ids string, start, limit int) ([]PublicTemplate, error) {
 	var out struct {
 		apiEnvelope
@@ -137,21 +153,29 @@ func (c *Client) GetPublicTemplates(ctx context.Context, ids string, start, limi
 		"start": {fmt.Sprint(start)},
 		"limit": {fmt.Sprint(limit)},
 	}
-	if err := c.do(ctx, http.MethodGet, "miniapp.message.public_templates", "wxaapi/newtmpl/getpubtemplatetitles", query, nil, &out); err != nil {
+	if err := c.do(
+		ctx, http.MethodGet, "miniapp.message.public_templates",
+		"wxaapi/newtmpl/getpubtemplatetitles", query, nil, &out,
+	); err != nil {
 		return nil, err
 	}
 	return out.Data, nil
 }
+
 func (c *Client) GetTemplateList(ctx context.Context) ([]PrivateTemplate, error) {
 	var out struct {
 		apiEnvelope
 		Data []PrivateTemplate `json:"data"`
 	}
-	if err := c.do(ctx, http.MethodGet, "miniapp.message.templates", "wxaapi/newtmpl/gettemplate", nil, nil, &out); err != nil {
+	if err := c.do(
+		ctx, http.MethodGet, "miniapp.message.templates",
+		"wxaapi/newtmpl/gettemplate", nil, nil, &out,
+	); err != nil {
 		return nil, err
 	}
 	return out.Data, nil
 }
+
 func (c *Client) AddTemplate(ctx context.Context, tid string, kidList []int, sceneDesc string) (string, error) {
 	var out struct {
 		apiEnvelope
@@ -162,15 +186,23 @@ func (c *Client) AddTemplate(ctx context.Context, tid string, kidList []int, sce
 		"kidList":   kidList,
 		"sceneDesc": sceneDesc,
 	}
-	if err := c.do(ctx, http.MethodPost, "miniapp.message.add_template", "wxaapi/newtmpl/addtemplate", nil, body, &out); err != nil {
+	if err := c.do(
+		ctx, http.MethodPost, "miniapp.message.add_template",
+		"wxaapi/newtmpl/addtemplate", nil, body, &out,
+	); err != nil {
 		return "", err
 	}
 	return out.ID, nil
 }
+
 func (c *Client) DeleteTemplate(ctx context.Context, id string) error {
 	var out apiEnvelope
-	return c.do(ctx, http.MethodPost, "miniapp.message.delete_template", "wxaapi/newtmpl/deltemplate", nil, map[string]string{"priTmplId": id}, &out)
+	return c.do(
+		ctx, http.MethodPost, "miniapp.message.delete_template",
+		"wxaapi/newtmpl/deltemplate", nil, map[string]string{"priTmplId": id}, &out,
+	)
 }
+
 func (c *Client) Send(ctx context.Context, m Message) error {
 	if m.ToUser == "" || m.TemplateID == "" {
 		return wxerrors.New("miniapp message: touser and template_id are required")
@@ -182,5 +214,8 @@ func (c *Client) Send(ctx context.Context, m Message) error {
 		m.Lang = "zh_CN"
 	}
 	var out apiEnvelope
-	return c.do(ctx, http.MethodPost, "miniapp.message.send", "cgi-bin/message/subscribe/send", nil, m, &out)
+	return c.do(
+		ctx, http.MethodPost, "miniapp.message.send",
+		"cgi-bin/message/subscribe/send", nil, m, &out,
+	)
 }

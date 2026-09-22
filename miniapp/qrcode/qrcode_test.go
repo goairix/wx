@@ -4,14 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/goairix/wx/v2/core/auth"
-	"github.com/goairix/wx/v2/core/cache"
-	wxerrors "github.com/goairix/wx/v2/core/errors"
-	"github.com/goairix/wx/v2/core/transport"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/goairix/wx/v2/core/auth"
+	"github.com/goairix/wx/v2/core/cache"
+	wxerrors "github.com/goairix/wx/v2/core/errors"
+	"github.com/goairix/wx/v2/core/transport"
 )
 
 func TestCreateRequestAndError(t *testing.T) {

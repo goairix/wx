@@ -63,36 +63,47 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 	c.encryptor = encryptor.New()
 	return c, nil
 }
+
 func (c *Client) Config() Config {
 	return c.config
 }
+
 func (c *Client) Auth() *auth.Auth {
 	return c.auth
 }
+
 func (c *Client) User() *user.Client {
 	return c.users
 }
+
 func (c *Client) Users() *user.Client {
 	return c.users
 }
+
 func (c *Client) Message() *message.Client {
 	return c.messages
 }
+
 func (c *Client) Messages() *message.Client {
 	return c.messages
 }
+
 func (c *Client) QRCode() *qrcode.Client {
 	return c.qr
 }
+
 func (c *Client) QrCode() *qrcode.Client {
 	return c.qr
 }
+
 func (c *Client) WXACode() *wxacode.Client {
 	return c.codes
 }
+
 func (c *Client) WxaCode() *wxacode.Client {
 	return c.codes
 }
+
 func (c *Client) Security() *security.Client {
 	return c.security
 }

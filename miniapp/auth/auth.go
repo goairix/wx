@@ -13,11 +13,16 @@ import (
 	"github.com/goairix/wx/v2/core/transport"
 )
 
-type Config struct{ AppID, AppSecret string }
+type Config struct {
+	AppID     string
+	AppSecret string
+}
+
 type Auth struct {
 	transport *transport.Client
 	config    Config
 }
+
 type Session struct {
 	OpenID     string `json:"openid"`
 	SessionKey string `json:"session_key"`
@@ -29,15 +34,22 @@ type Session struct {
 func New(tr *transport.Client, config Config) *Auth {
 	return &Auth{transport: tr, config: config}
 }
+
 func (a *Auth) Code2Session(ctx context.Context, code string) (*Session, error) {
 	var out Session
 	meta := &request.ResponseMeta{}
+	query := url.Values{
+		"appid":      {a.config.AppID},
+		"secret":     {a.config.AppSecret},
+		"js_code":    {code},
+		"grant_type": {"authorization_code"},
+	}
 	err := a.transport.Do(ctx, request.Request{
 		Operation: "miniapp.auth.code2session",
 		Platform:  "miniapp",
 		Method:    http.MethodGet,
 		Path:      "sns/jscode2session",
-		Query:     url.Values{"appid": {a.config.AppID}, "secret": {a.config.AppSecret}, "js_code": {code}, "grant_type": {"authorization_code"}},
+		Query:     query,
 		Result:    &out,
 		Meta:      meta,
 	})
@@ -56,9 +68,11 @@ func (a *Auth) Code2Session(ctx context.Context, code string) (*Session, error) 
 	}
 	return &out, nil
 }
+
 func (a *Auth) Session(ctx context.Context, code string) (*Session, error) {
 	return a.Code2Session(ctx, code)
 }
+
 func (a *Auth) Get(ctx context.Context, code string) (*Session, error) {
 	return a.Code2Session(ctx, code)
 }
@@ -74,12 +88,17 @@ type TokenResponse struct {
 func FetchToken(ctx context.Context, tr *transport.Client, config Config) (string, time.Time, error) {
 	var out TokenResponse
 	meta := &request.ResponseMeta{}
+	query := url.Values{
+		"grant_type": {"client_credential"},
+		"appid":      {config.AppID},
+		"secret":     {config.AppSecret},
+	}
 	err := tr.Do(ctx, request.Request{
 		Operation: "miniapp.auth.token",
 		Platform:  "miniapp",
 		Method:    http.MethodGet,
 		Path:      "cgi-bin/token",
-		Query:     url.Values{"grant_type": {"client_credential"}, "appid": {config.AppID}, "secret": {config.AppSecret}},
+		Query:     query,
 		Result:    &out,
 		Meta:      meta,
 	})
@@ -98,6 +117,7 @@ func FetchToken(ctx context.Context, tr *transport.Client, config Config) (strin
 	}
 	return out.AccessToken, time.Now().Add(time.Duration(out.ExpiresIn) * time.Second), nil
 }
+
 func (a *Auth) String() string {
 	return fmt.Sprintf("miniapp auth (%s)", a.config.AppID)
 }

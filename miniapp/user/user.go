@@ -30,6 +30,7 @@ type PhoneInfo struct {
 		AppID     string `json:"appid"`
 	} `json:"watermark"`
 }
+
 type phoneResponse struct {
 	ErrCode   int       `json:"errcode"`
 	ErrMsg    string    `json:"errmsg"`

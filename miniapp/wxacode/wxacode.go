@@ -67,6 +67,7 @@ func (c *Client) call(ctx context.Context, op, path string, body map[string]inte
 	}
 	return raw, contentType, nil
 }
+
 func (c *Client) CreateQrCode(ctx context.Context, path string, opts map[string]interface{}) ([]byte, string, error) {
 	if opts == nil {
 		opts = map[string]interface{}{}
@@ -74,6 +75,7 @@ func (c *Client) CreateQrCode(ctx context.Context, path string, opts map[string]
 	opts["path"] = path
 	return c.call(ctx, "miniapp.wxacode.create_qrcode", "cgi-bin/wxaapp/createwxaqrcode", opts)
 }
+
 func (c *Client) Get(ctx context.Context, path string, opts map[string]interface{}) ([]byte, string, error) {
 	if opts == nil {
 		opts = map[string]interface{}{}
@@ -81,6 +83,7 @@ func (c *Client) Get(ctx context.Context, path string, opts map[string]interface
 	opts["path"] = path
 	return c.call(ctx, "miniapp.wxacode.get", "wxa/getwxacode", opts)
 }
+
 func (c *Client) GetUnlimited(ctx context.Context, scene string, opts map[string]interface{}) ([]byte, string, error) {
 	if opts == nil {
 		opts = map[string]interface{}{}

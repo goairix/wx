@@ -4,14 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/goairix/wx/v2/core/auth"
-	"github.com/goairix/wx/v2/core/cache"
-	wxerrors "github.com/goairix/wx/v2/core/errors"
-	"github.com/goairix/wx/v2/core/transport"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/goairix/wx/v2/core/auth"
+	"github.com/goairix/wx/v2/core/cache"
+	wxerrors "github.com/goairix/wx/v2/core/errors"
+	"github.com/goairix/wx/v2/core/transport"
 )
 
 func TestGetPhoneNumberRequestAndError(t *testing.T) {
@@ -30,7 +31,8 @@ func TestGetPhoneNumberRequestAndError(t *testing.T) {
 	manager := auth.NewManager("miniapp", "test", cache.NewMemory(), auth.ProviderFunc(func(context.Context) (auth.Credential, error) {
 		return auth.Credential{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour)}, nil
 	}))
-	_, err := New(transport.New(server.Client(), server.URL, transport.RetryPolicy{}), manager).GetPhoneNumber(context.Background(), "code", "openid")
+	client := New(transport.New(server.Client(), server.URL, transport.RetryPolicy{}), manager)
+	_, err := client.GetPhoneNumber(context.Background(), "code", "openid")
 	var apiErr *wxerrors.Error
 	if !errors.As(err, &apiErr) || apiErr.Code != "40013" || apiErr.RequestID != "rid" || apiErr.HTTPStatus != 200 {
 		t.Fatalf("err=%#v", err)

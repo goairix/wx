@@ -3,13 +3,14 @@ package wxacode
 import (
 	"context"
 	"encoding/json"
-	"github.com/goairix/wx/v2/core/auth"
-	"github.com/goairix/wx/v2/core/cache"
-	"github.com/goairix/wx/v2/core/transport"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/goairix/wx/v2/core/auth"
+	"github.com/goairix/wx/v2/core/cache"
+	"github.com/goairix/wx/v2/core/transport"
 )
 
 func TestGetUnlimitedImage(t *testing.T) {
@@ -28,7 +29,8 @@ func TestGetUnlimitedImage(t *testing.T) {
 	manager := auth.NewManager("miniapp", "wxa", cache.NewMemory(), auth.ProviderFunc(func(context.Context) (auth.Credential, error) {
 		return auth.Credential{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour)}, nil
 	}))
-	data, ct, err := New(transport.New(server.Client(), server.URL, transport.RetryPolicy{}), manager).GetUnlimited(context.Background(), "abc", nil)
+	client := New(transport.New(server.Client(), server.URL, transport.RetryPolicy{}), manager)
+	data, ct, err := client.GetUnlimited(context.Background(), "abc", nil)
 	if err != nil || ct != "image/png" || len(data) != 3 {
 		t.Fatalf("data=%v ct=%q err=%v", data, ct, err)
 	}

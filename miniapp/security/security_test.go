@@ -4,14 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/goairix/wx/v2/core/auth"
-	"github.com/goairix/wx/v2/core/cache"
-	wxerrors "github.com/goairix/wx/v2/core/errors"
-	"github.com/goairix/wx/v2/core/transport"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/goairix/wx/v2/core/auth"
+	"github.com/goairix/wx/v2/core/cache"
+	wxerrors "github.com/goairix/wx/v2/core/errors"
+	"github.com/goairix/wx/v2/core/transport"
 )
 
 func TestCheckTextRequestAndStructuredError(t *testing.T) {
@@ -30,7 +31,8 @@ func TestCheckTextRequestAndStructuredError(t *testing.T) {
 	manager := auth.NewManager("miniapp", "sec", cache.NewMemory(), auth.ProviderFunc(func(context.Context) (auth.Credential, error) {
 		return auth.Credential{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour)}, nil
 	}))
-	_, err := New(transport.New(server.Client(), server.URL, transport.RetryPolicy{}), manager).CheckText(context.Background(), "open", "text", Comment)
+	client := New(transport.New(server.Client(), server.URL, transport.RetryPolicy{}), manager)
+	_, err := client.CheckText(context.Background(), "open", "text", Comment)
 	var apiErr *wxerrors.Error
 	if !errors.As(err, &apiErr) || apiErr.Code != "40014" || apiErr.RequestID != "rid" {
 		t.Fatalf("err=%#v", err)

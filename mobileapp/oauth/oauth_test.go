@@ -18,7 +18,9 @@ func TestTokenFromCodeRequestAndSeparateKeys(t *testing.T) {
 		if r.Method != http.MethodGet || r.URL.Path != "/sns/oauth2/access_token" {
 			t.Fatalf("path=%s", r.URL.Path)
 		}
-		if r.URL.Query().Get("appid") != "id" || r.URL.Query().Get("secret") != "secret" || r.URL.Query().Get("code") != "c" || r.URL.Query().Get("grant_type") != "authorization_code" {
+		query := r.URL.Query()
+		if query.Get("appid") != "id" || query.Get("secret") != "secret" ||
+			query.Get("code") != "c" || query.Get("grant_type") != "authorization_code" {
 			t.Fatalf("query=%v", r.URL.Query())
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -41,7 +43,9 @@ func TestTokenFromCodeRequestAndSeparateKeys(t *testing.T) {
 
 func TestUserInfoPlatformError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/sns/userinfo" || r.URL.Query().Get("access_token") != "access" || r.URL.Query().Get("openid") != "openid" {
+		query := r.URL.Query()
+		if r.Method != http.MethodGet || r.URL.Path != "/sns/userinfo" ||
+			query.Get("access_token") != "access" || query.Get("openid") != "openid" {
 			t.Errorf("request=%s %s %v", r.Method, r.URL.Path, r.URL.Query())
 		}
 		w.Header().Set("X-Request-Id", "rid")

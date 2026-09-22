@@ -37,11 +37,21 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 	if c == nil {
 		c = corecache.NewMemory()
 	}
-	return &Client{config: config, transport: tr, oauth: oauth.New(tr, oauth.Config{AppID: config.AppID, AppSecret: config.AppSecret}, c)}, nil
+	oauthClient := oauth.New(tr, oauth.Config{
+		AppID:     config.AppID,
+		AppSecret: config.AppSecret,
+	}, c)
+	return &Client{
+		config:    config,
+		transport: tr,
+		oauth:     oauthClient,
+	}, nil
 }
+
 func (c *Client) Config() Config {
 	return c.config
 }
+
 func (c *Client) OAuth() *oauth.Client {
 	return c.oauth
 }
