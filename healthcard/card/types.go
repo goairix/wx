@@ -1,6 +1,6 @@
 package card
 
-import "github.com/goairix/wx/v2/health_card/model"
+import "github.com/goairix/wx/v2/healthcard/model"
 
 type RegisterRequest struct {
 	WechatCode string            `json:"wechatCode"`

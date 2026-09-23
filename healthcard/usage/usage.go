@@ -1,6 +1,6 @@
 package usage
 
-import "github.com/goairix/wx/v2/health_card/contracts"
+import "github.com/goairix/wx/v2/healthcard/contracts"
 
 const reportHISDataPath = "/rest/auth/HealthCard/HealthOpenPlatform/ISVOpenObj/reportHISData"
 const reportRealNamePath = "/rest/auth/HealthCard/HealthOpenPlatform/ISVOpenObj/reportRealNamePatientData"

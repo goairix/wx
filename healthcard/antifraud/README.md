@@ -1,9 +1,9 @@
-# anti_fraud：预约防黄牛
+# antifraud：预约防黄牛
 
 调用入口：`client.AntiFraud()`，对应服务 250。
 
 ```go
-result, err := client.AntiFraud().CheckAppointmentLimit(anti_fraud.CheckAppointmentLimitRequest{OpenID: openID, HealthCardID: healthCardID, ClientIP: clientIP})
+result, err := client.AntiFraud().CheckAppointmentLimit(antifraud.CheckAppointmentLimitRequest{OpenID: openID, HealthCardID: healthCardID, ClientIP: clientIP})
 if err == nil && !result.Verify { /* 根据 RiskLevel 和 Toast 拒绝或提示 */ }
 ```
 

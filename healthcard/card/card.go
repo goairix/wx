@@ -1,8 +1,8 @@
 package card
 
 import (
-	"github.com/goairix/wx/v2/health_card/contracts"
-	"github.com/goairix/wx/v2/health_card/model"
+	"github.com/goairix/wx/v2/healthcard/contracts"
+	"github.com/goairix/wx/v2/healthcard/model"
 )
 
 const (

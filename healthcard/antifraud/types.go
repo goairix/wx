@@ -1,4 +1,4 @@
-package anti_fraud
+package antifraud
 
 type CheckAppointmentLimitRequest struct {
 	OpenID       string `json:"openId"`

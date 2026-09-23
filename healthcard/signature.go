@@ -1,4 +1,4 @@
-package health_card
+package healthcard
 
 import (
 	"crypto/sha256"

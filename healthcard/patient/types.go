@@ -1,6 +1,6 @@
 package patient
 
-import "github.com/goairix/wx/v2/health_card/model"
+import "github.com/goairix/wx/v2/healthcard/model"
 
 type GetCitySupportRequest struct {
 	CityCode   string `json:"cityCode"`

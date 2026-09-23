@@ -1,4 +1,4 @@
-package health_card
+package healthcard
 
 import (
 	"crypto/rand"
@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/goairix/wx/v2/health_card/anti_fraud"
-	"github.com/goairix/wx/v2/health_card/card"
-	"github.com/goairix/wx/v2/health_card/device"
-	"github.com/goairix/wx/v2/health_card/notification"
-	"github.com/goairix/wx/v2/health_card/patient"
-	"github.com/goairix/wx/v2/health_card/usage"
-	"github.com/goairix/wx/v2/health_card/verification"
+	"github.com/goairix/wx/v2/healthcard/antifraud"
+	"github.com/goairix/wx/v2/healthcard/card"
+	"github.com/goairix/wx/v2/healthcard/device"
+	"github.com/goairix/wx/v2/healthcard/notification"
+	"github.com/goairix/wx/v2/healthcard/patient"
+	"github.com/goairix/wx/v2/healthcard/usage"
+	"github.com/goairix/wx/v2/healthcard/verification"
 	kernelContracts "github.com/goairix/wx/v2/kernel/contracts"
 	"github.com/goairix/wx/v2/support/cache"
 	"github.com/goairix/wx/v2/support/lock"
@@ -64,7 +64,7 @@ func (client *Client) Device() *device.Client { return device.New(client) }
 func (client *Client) Notification() *notification.Client { return notification.New(client) }
 
 // AntiFraud 返回预约防黄牛领域客户端。
-func (client *Client) AntiFraud() *anti_fraud.Client { return anti_fraud.New(client) }
+func (client *Client) AntiFraud() *antifraud.Client { return antifraud.New(client) }
 
 // Option 用于配置根客户端。
 type Option func(*Client)

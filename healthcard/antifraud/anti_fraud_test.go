@@ -1,4 +1,4 @@
-package anti_fraud
+package antifraud
 
 import "testing"
 

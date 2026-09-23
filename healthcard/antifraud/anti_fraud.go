@@ -1,6 +1,6 @@
-package anti_fraud
+package antifraud
 
-import "github.com/goairix/wx/v2/health_card/contracts"
+import "github.com/goairix/wx/v2/healthcard/contracts"
 
 const appointmentLimitPath = "/rest/auth/HealthCard/VaccinationOpenServer/OpenVaccinationObj/checkAppointmentLimit"
 
