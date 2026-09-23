@@ -313,6 +313,122 @@ func TestOpenPlatformErrorIncludesTransportMetadata(t *testing.T) {
 	}
 }
 
+func TestAuthorizedFactoriesInheritTransportCacheAndHook(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(
+		writer http.ResponseWriter,
+		request *http.Request,
+	) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/cgi-bin/component/api_component_token":
+			writeJSON(writer, map[string]interface{}{
+				"component_access_token": "component-token",
+				"expires_in":             7200,
+			})
+		case "/cgi-bin/component/api_authorizer_token":
+			var body struct {
+				AppID string `json:"authorizer_appid"`
+			}
+			if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+				t.Errorf("decode authorizer token request: %v", err)
+				writer.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if request.URL.Query().Get("component_access_token") != "component-token" {
+				t.Errorf("unexpected component token query: %s", request.URL.RawQuery)
+			}
+			writeJSON(writer, map[string]interface{}{
+				"authorizer_access_token": "token-" + body.AppID,
+				"expires_in":              7200,
+			})
+		case "/cgi-bin/user/info":
+			if request.URL.Query().Get("access_token") != "token-official-app" {
+				t.Errorf("official request query: %s", request.URL.RawQuery)
+			}
+			writeJSON(writer, map[string]interface{}{
+				"openid": "openid-1",
+			})
+		case "/wxa/business/getuserphonenumber":
+			if request.URL.Query().Get("access_token") != "token-miniapp-app" {
+				t.Errorf("miniapp request query: %s", request.URL.RawQuery)
+			}
+			writeJSON(writer, map[string]interface{}{
+				"phone_info": map[string]interface{}{
+					"phoneNumber": "13800000000",
+				},
+			})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	store := newTrackingCache()
+	var hookMu sync.Mutex
+	var operations []string
+	hook := observability.HookFunc(func(event observability.Event) {
+		hookMu.Lock()
+		operations = append(operations, event.Operation)
+		hookMu.Unlock()
+	})
+	client, err := NewClient(
+		Config{
+			AppID:     "component-app",
+			AppSecret: "component-secret",
+		},
+		WithHTTPClient(server.Client()),
+		WithBaseURL(server.URL),
+		WithCache(store),
+		WithHook(hook),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := client.Component().SetVerifyTicket(ctx, "ticket-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	officialClient, err := client.AuthorizedOfficial(
+		"official-app",
+		"official-refresh-secret",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := officialClient.Users().Info(ctx, "openid-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	miniappClient, err := client.AuthorizedMiniApp(
+		"miniapp-app",
+		"miniapp-refresh-secret",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	phone, err := miniappClient.Users().GetPhoneNumber(
+		ctx,
+		"phone-code",
+		"openid-1",
+	)
+	if err != nil || phone.PhoneNumber != "13800000000" {
+		t.Fatalf("phone = %#v, err = %v", phone, err)
+	}
+
+	hookMu.Lock()
+	recordedOperations := append([]string(nil), operations...)
+	hookMu.Unlock()
+	if !containsOperation(recordedOperations, "official.user.info") {
+		t.Fatalf("official operation was not observed: %v", recordedOperations)
+	}
+	if !containsOperation(recordedOperations, "miniapp.user.phone") {
+		t.Fatalf("miniapp operation was not observed: %v", recordedOperations)
+	}
+
+	assertFactoryCredentialKeys(t, store.snapshot())
+}
+
 func TestAcceptVerifyTicketFailsClosed(t *testing.T) {
 	client, err := NewClient(Config{
 		AppID:     "component-app",
@@ -422,6 +538,30 @@ func assertCredentialKeys(t *testing.T, entries map[string]string) {
 	}
 	if componentKey == authorizerKey {
 		t.Fatalf("component and authorizer credentials share key %q", componentKey)
+	}
+}
+
+func assertFactoryCredentialKeys(t *testing.T, entries map[string]string) {
+	t.Helper()
+	var officialKey string
+	var miniappKey string
+	for key, value := range entries {
+		if strings.Contains(key, "official-refresh-secret") ||
+			strings.Contains(key, "miniapp-refresh-secret") {
+			t.Fatalf("factory credential cache key contains refresh token: %q", key)
+		}
+		if strings.Contains(value, "token-official-app") {
+			officialKey = key
+		}
+		if strings.Contains(value, "token-miniapp-app") {
+			miniappKey = key
+		}
+	}
+	if officialKey == "" || miniappKey == "" {
+		t.Fatalf("missing factory credential cache entries: %#v", entries)
+	}
+	if officialKey == miniappKey {
+		t.Fatalf("authorized factories share credential key %q", officialKey)
 	}
 }
 
