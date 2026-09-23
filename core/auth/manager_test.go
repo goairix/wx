@@ -67,6 +67,109 @@ func TestManagersSharingCacheAndKeyRefreshOnce(t *testing.T) {
 	}
 }
 
+func TestManagerSharesProviderFailureWithConcurrentCallers(t *testing.T) {
+	const callers = 20
+	providerError := stderrors.New("provider unavailable")
+	release := make(chan struct{})
+	var calls int32
+	sharedCache := cache.NewMemory()
+	manager := NewManager("work", "corp-failure", sharedCache, ProviderFunc(func(context.Context) (Credential, error) {
+		atomic.AddInt32(&calls, 1)
+		<-release
+		return Credential{}, providerError
+	}))
+
+	start := make(chan struct{})
+	errorsByCaller := make(chan error, callers)
+	var group sync.WaitGroup
+	for i := 0; i < callers; i++ {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			_, err := manager.Token(context.Background())
+			errorsByCaller <- err
+		}()
+	}
+	close(start)
+	waitForParticipants(t, sharedCache, manager.cacheKey, callers)
+	close(release)
+	group.Wait()
+	close(errorsByCaller)
+
+	for err := range errorsByCaller {
+		if err != providerError {
+			t.Fatalf("Token() error = %v, want shared provider error", err)
+		}
+	}
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Fatalf("provider called %d times, want 1", got)
+	}
+}
+
+func TestManagerWaiterCanCancelDuringRefresh(t *testing.T) {
+	providerStarted := make(chan struct{})
+	releaseProvider := make(chan struct{})
+	sharedCache := cache.NewMemory()
+	manager := NewManager("work", "corp-cancel", sharedCache, ProviderFunc(func(context.Context) (Credential, error) {
+		close(providerStarted)
+		<-releaseProvider
+		return Credential{
+			AccessToken: "token",
+			ExpiresAt:   time.Now().Add(time.Hour),
+		}, nil
+	}))
+
+	leaderDone := make(chan error, 1)
+	go func() {
+		_, err := manager.Token(context.Background())
+		leaderDone <- err
+	}()
+	<-providerStarted
+
+	waiterContext, cancel := context.WithCancel(context.Background())
+	waiterDone := make(chan error, 1)
+	go func() {
+		_, err := manager.Token(waiterContext)
+		waiterDone <- err
+	}()
+	waitForParticipants(t, sharedCache, manager.cacheKey, 2)
+	cancel()
+	select {
+	case err := <-waiterDone:
+		if err != context.Canceled {
+			t.Fatalf("waiter error = %v, want context.Canceled", err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("canceled waiter remained blocked on provider")
+	}
+
+	close(releaseProvider)
+	if err := <-leaderDone; err != nil {
+		t.Fatalf("leader Token() error = %v", err)
+	}
+}
+
+func waitForParticipants(t *testing.T, c cache.Cache, key string, want int) {
+	t.Helper()
+	callKey := makeCacheLockKey(c, key)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		refreshCalls.Lock()
+		call := refreshCalls.entries[callKey]
+		got := 0
+		if call != nil {
+			got = call.participants
+		}
+		refreshCalls.Unlock()
+		if got == want {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("in-flight refresh did not reach %d participants", want)
+}
+
 func TestManagersWithAmbiguousComponentsDoNotShareCacheEntry(t *testing.T) {
 	var calls int32
 	provider := ProviderFunc(func(context.Context) (Credential, error) {

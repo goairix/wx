@@ -50,7 +50,8 @@ func makeCredentialCacheKey(platform, key string) string {
 	return strconv.Itoa(len(platform)) + ":" + platform + strconv.Itoa(len(key)) + ":" + key
 }
 
-// Token returns a cached credential or obtains and caches a fresh one.
+// Token returns a cached credential or obtains and caches a fresh one. Calls
+// sharing a cache and key observe the same in-flight refresh result.
 func (m *Manager) Token(ctx context.Context) (Credential, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -62,34 +63,49 @@ func (m *Manager) Token(ctx context.Context) (Credential, error) {
 		return Credential{}, fmt.Errorf("auth: nil manager")
 	}
 
-	// Coordinate by cache instance and key so independently configured managers
-	// sharing a cache cannot refresh the same credential concurrently. Recheck
-	// the cache after acquiring the lock so all callers observe the first
-	// successful refresh.
-	unlock := acquireRefreshLock(m.cache, m.cacheKey)
-	defer unlock()
-	if err := ctx.Err(); err != nil {
-		return Credential{}, err
-	}
-
 	if m.cache == nil {
 		return Credential{}, fmt.Errorf("auth: nil cache")
 	}
+	credential, ok, err := m.cached(ctx)
+	if err != nil || ok {
+		return credential, err
+	}
+
+	callKey, call, leader := beginRefresh(m.cache, m.cacheKey)
+	if !leader {
+		return waitRefresh(ctx, call)
+	}
+	credential, err = m.refresh(ctx)
+	finishRefresh(callKey, call, credential, err)
+	return credential, err
+}
+
+func (m *Manager) cached(ctx context.Context) (Credential, bool, error) {
 	raw, ok, err := m.cache.Get(ctx, m.cacheKey)
 	if err != nil {
-		return Credential{}, err
+		return Credential{}, false, err
 	}
 	if ok {
 		var credential Credential
 		if json.Unmarshal([]byte(raw), &credential) == nil && !credential.stale(time.Now()) {
-			return credential, nil
+			return credential, true, nil
 		}
+	}
+	return Credential{}, false, nil
+}
+
+func (m *Manager) refresh(ctx context.Context) (Credential, error) {
+	// A credential may have been stored between the initial cache check and this
+	// call becoming the leader.
+	credential, ok, err := m.cached(ctx)
+	if err != nil || ok {
+		return credential, err
 	}
 
 	if m.provider == nil {
 		return Credential{}, fmt.Errorf("auth: nil provider")
 	}
-	credential, err := m.provider.Token(ctx)
+	credential, err = m.provider.Token(ctx)
 	if err != nil {
 		return Credential{}, err
 	}

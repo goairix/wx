@@ -2,6 +2,8 @@ package work
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -75,7 +77,7 @@ func NewClient(config Config, options ...Option) (*Client, error) {
 	}
 	client.auth = auth.NewManager(
 		"work",
-		config.CorpID+":"+config.CorpSecret,
+		credentialIdentity(config.CorpID, config.CorpSecret),
 		credentialCache,
 		auth.ProviderFunc(client.fetchToken),
 	)
@@ -91,6 +93,11 @@ func NewClient(config Config, options ...Option) (*Client, error) {
 	client.authorizer = authorizer.NewClient(executor)
 	client.webhook = workwebhook.NewClient(config.CorpID, config.Token, config.EncodingAESKey)
 	return client, nil
+}
+
+func credentialIdentity(corpID, corpSecret string) string {
+	digest := sha256.Sum256([]byte(corpID + "\x00" + corpSecret))
+	return corpID + ":" + hex.EncodeToString(digest[:])
 }
 
 func (c *Client) fetchToken(ctx context.Context) (auth.Credential, error) {
