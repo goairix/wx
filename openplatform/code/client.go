@@ -48,7 +48,13 @@ type AuthorizerClient struct {
 }
 
 // Commit uploads code based on a component template.
-func (c *AuthorizerClient) Commit(ctx context.Context, templateID int64, version, description, extJSON string) error {
+func (c *AuthorizerClient) Commit(
+	ctx context.Context,
+	templateID int64,
+	version string,
+	description string,
+	extJSON string,
+) error {
 	return c.do(
 		ctx,
 		"openplatform.code.commit",

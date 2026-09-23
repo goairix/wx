@@ -312,7 +312,10 @@ func TestOpenPlatformErrorIncludesTransportMetadata(t *testing.T) {
 }
 
 func TestAuthorizedFactoriesInheritTransportCacheAndHook(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(
+		writer http.ResponseWriter,
+		request *http.Request,
+	) {
 		writer.Header().Set("Content-Type", "application/json")
 		switch request.URL.Path {
 		case "/cgi-bin/component/api_component_token":
@@ -416,7 +419,10 @@ func TestAuthorizedFactoriesInheritTransportCacheAndHook(t *testing.T) {
 
 func TestAuthorizedEntriesShareOneConcurrentCredentialRefresh(t *testing.T) {
 	var authorizerRefreshes int32
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(
+		writer http.ResponseWriter,
+		request *http.Request,
+	) {
 		writer.Header().Set("Content-Type", "application/json")
 		switch request.URL.Path {
 		case "/cgi-bin/component/api_component_token":
@@ -511,7 +517,10 @@ func TestAuthorizedEntriesShareOneConcurrentCredentialRefresh(t *testing.T) {
 func TestAuthorizerRefreshTokenRotationIsReusedAndPersisted(t *testing.T) {
 	var requestMu sync.Mutex
 	var usedRefreshTokens []string
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(
+		writer http.ResponseWriter,
+		request *http.Request,
+	) {
 		writer.Header().Set("Content-Type", "application/json")
 		switch request.URL.Path {
 		case "/cgi-bin/component/api_component_token":
@@ -580,9 +589,22 @@ func TestAuthorizerRefreshTokenRotationIsReusedAndPersisted(t *testing.T) {
 	if err := client.Component().SetVerifyTicket(ctx, "ticket-1"); err != nil {
 		t.Fatal(err)
 	}
+	initialManager := client.authorizerManager("authorizer-app", "initial-refresh-token")
 	authorizedCode := client.Code().ForAuthorizer("authorizer-app", "initial-refresh-token")
 	if err := authorizedCode.Release(ctx); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := client.AuthorizedOfficial("authorizer-app", "rotated-refresh-token"); err != nil {
+		t.Fatal(err)
+	}
+	if manager := client.authorizerManager("authorizer-app", "rotated-refresh-token"); manager != initialManager {
+		t.Fatal("rotated token created a different credential manager")
+	}
+	if _, err := client.AuthorizedMiniApp("authorizer-app", "initial-refresh-token"); err != nil {
+		t.Fatal(err)
+	}
+	if manager := client.authorizerManager("authorizer-app", "initial-refresh-token"); manager != initialManager {
+		t.Fatal("old token recreated or replaced the credential manager")
 	}
 
 	credentialKeys := keysContainingValue(store.snapshot(), "access-token-1")
@@ -594,6 +616,18 @@ func TestAuthorizerRefreshTokenRotationIsReusedAndPersisted(t *testing.T) {
 	}
 	if err := authorizedCode.Release(ctx); err != nil {
 		t.Fatal(err)
+	}
+	secondCredentialKeys := keysContainingValue(store.snapshot(), "access-token-2")
+	if len(secondCredentialKeys) != 1 || secondCredentialKeys[0] != credentialKeys[0] {
+		t.Fatalf(
+			"rotated credential keys = %v, want original key %q",
+			secondCredentialKeys,
+			credentialKeys[0],
+		)
+	}
+	if strings.Contains(credentialKeys[0], "initial-refresh-token") ||
+		strings.Contains(credentialKeys[0], "rotated-refresh-token") {
+		t.Fatalf("credential key contains refresh token: %q", credentialKeys[0])
 	}
 
 	requestMu.Lock()

@@ -32,7 +32,7 @@ func credentialIdentity(kind string, values ...string) string {
 }
 
 func (c *Client) authorizerManager(appID, refreshToken string) *auth.Manager {
-	identity := credentialIdentity("authorizer", c.config.AppID, appID, refreshToken)
+	identity := credentialIdentity("authorizer", c.config.AppID, appID)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()

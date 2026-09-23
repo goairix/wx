@@ -70,6 +70,8 @@ client, err := openplatform.NewClient(
 
 同一开放平台客户端中，`Code().ForAuthorizer`、`AuthorizedOfficial` 和
 `AuthorizedMiniApp` 对相同授权身份复用同一个凭证管理器，并发请求只触发一次 token 刷新。
+授权身份由 component AppID 和 authorizer AppID 确定。首次创建凭证管理器时采用传入的 refresh
+token；管理器存在后，重复构造客户端不会用调用方再次传入的 token 覆盖内部已轮换的新 token。
 
 ## 账号授权
 
