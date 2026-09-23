@@ -93,7 +93,7 @@ flowchart LR
     Credential --> Build[构造平台请求]
     Build --> Transport[HTTP Transport]
     Transport --> Retry{是否重试}
-    Retry -->|是| Credential
+    Retry -->|是| Transport
     Retry -->|否| Parse[解析 DTO 或结构化错误]
 
     Context[context 超时与取消] -.贯穿.-> Domain
