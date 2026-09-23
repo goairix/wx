@@ -17,6 +17,87 @@ import (
 	"github.com/goairix/wx/v2/work/message"
 )
 
+func TestContactEndpointMatrix(t *testing.T) {
+	hits := make(map[string]int)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		hits[request.URL.Path]++
+		switch request.URL.Path {
+		case "/cgi-bin/gettoken":
+			_, _ = writer.Write([]byte(`{"access_token":"token","expires_in":7200}`))
+		case "/cgi-bin/user/create", "/cgi-bin/user/update", "/cgi-bin/user/delete":
+			_, _ = writer.Write([]byte(`{"errcode":0}`))
+		case "/cgi-bin/user/get":
+			_, _ = writer.Write([]byte(`{"errcode":0,"userid":"user-one"}`))
+		case "/cgi-bin/department/create":
+			_, _ = writer.Write([]byte(`{"errcode":0,"id":2}`))
+		case "/cgi-bin/tag/create":
+			_, _ = writer.Write([]byte(`{"errcode":0,"tagid":3}`))
+		case "/cgi-bin/batch/syncuser", "/cgi-bin/export/user":
+			_, _ = writer.Write([]byte(`{"errcode":0,"jobid":"job-one"}`))
+		default:
+			t.Errorf("unexpected path: %s", request.URL.Path)
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	client, err := work.NewClient(
+		work.Config{
+			CorpID:         "corp",
+			CorpSecret:     "secret",
+			EncodingAESKey: "aes-key",
+		},
+		work.WithBaseURL(server.URL),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	users := client.Contact().Users()
+	if err := users.Create(ctx, contact.CreateUserRequest{Userid: "user-one"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := users.Get(ctx, "user-one"); err != nil {
+		t.Fatal(err)
+	}
+	if err := users.Update(ctx, contact.UpdateUserRequest{Userid: "user-one"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := users.Delete(ctx, "user-one"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Contact().Departments().Create(
+		ctx,
+		contact.CreateDepartmentRequest{Name: "Engineering", Parentid: 1},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Contact().Tags().Create(ctx, "Developers", 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Contact().Batch().SyncUsers(ctx, "media-one", true, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Contact().Batch().ExportUsers(ctx, 1000); err != nil {
+		t.Fatal(err)
+	}
+	paths := []string{
+		"/cgi-bin/user/create",
+		"/cgi-bin/user/get",
+		"/cgi-bin/user/update",
+		"/cgi-bin/user/delete",
+		"/cgi-bin/department/create",
+		"/cgi-bin/tag/create",
+		"/cgi-bin/batch/syncuser",
+		"/cgi-bin/export/user",
+	}
+	for _, path := range paths {
+		if hits[path] != 1 {
+			t.Errorf("hits[%q] = %d, want 1", path, hits[path])
+		}
+	}
+}
+
 func TestDomainRequestsAndResponses(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(domainFixture(t)))
 	defer server.Close()

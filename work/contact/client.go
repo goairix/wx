@@ -2,6 +2,7 @@ package contact
 
 import (
 	"context"
+	"encoding/base64"
 	"net/url"
 	"strconv"
 
@@ -17,12 +18,19 @@ type Client struct {
 }
 
 // NewClient constructs a contact client.
-func NewClient(executor *api.Client) *Client {
+func NewClient(executor *api.Client, encodingAESKey ...string) *Client {
+	aesKey := ""
+	if len(encodingAESKey) > 0 {
+		aesKey = encodingAESKey[0]
+	}
 	return &Client{
 		users:       &UserClient{api: executor},
 		departments: &DepartmentClient{api: executor},
 		tags:        &TagClient{api: executor},
-		batch:       &BatchClient{api: executor},
+		batch: &BatchClient{
+			api:            executor,
+			encodingAESKey: aesKey,
+		},
 	}
 }
 
@@ -180,7 +188,8 @@ func (c *TagClient) List(ctx context.Context) ([]TagInfo, error) {
 
 // BatchClient manages asynchronous contact import and export jobs.
 type BatchClient struct {
-	api *api.Client
+	api            *api.Client
+	encodingAESKey string
 }
 
 func (c *BatchClient) SyncUsers(
@@ -244,6 +253,66 @@ func (c *BatchClient) Result(ctx context.Context, jobID string) (*BatchResult, e
 		ctx,
 		"work.contact.batch.result",
 		"cgi-bin/batch/getresult",
+		url.Values{"jobid": []string{jobID}},
+		result,
+	)
+	return result, err
+}
+
+func (c *BatchClient) ExportUsers(ctx context.Context, blockSize int) (string, error) {
+	return c.exportJob(ctx, "user", blockSize, 0)
+}
+
+func (c *BatchClient) ExportSimpleUsers(ctx context.Context, blockSize int) (string, error) {
+	return c.exportJob(ctx, "simple_user", blockSize, 0)
+}
+
+func (c *BatchClient) ExportDepartments(ctx context.Context, blockSize int) (string, error) {
+	return c.exportJob(ctx, "department", blockSize, 0)
+}
+
+func (c *BatchClient) ExportTagUsers(
+	ctx context.Context,
+	blockSize int,
+	tagID int,
+) (string, error) {
+	return c.exportJob(ctx, "taguser", blockSize, tagID)
+}
+
+func (c *BatchClient) exportJob(
+	ctx context.Context,
+	action string,
+	blockSize int,
+	tagID int,
+) (string, error) {
+	body := struct {
+		EncodingAESKey string `json:"encoding_aeskey"`
+		BlockSize      int    `json:"block_size"`
+		TagID          int    `json:"tagid,omitempty"`
+	}{
+		EncodingAESKey: base64.StdEncoding.EncodeToString([]byte(c.encodingAESKey)),
+		BlockSize:      blockSize,
+		TagID:          tagID,
+	}
+	var result struct {
+		JobID string `json:"jobid"`
+	}
+	err := c.api.Post(
+		ctx,
+		"work.contact.export."+action,
+		"cgi-bin/export/"+action,
+		body,
+		&result,
+	)
+	return result.JobID, err
+}
+
+func (c *BatchClient) ExportResult(ctx context.Context, jobID string) (*ExportResult, error) {
+	result := new(ExportResult)
+	err := c.api.Get(
+		ctx,
+		"work.contact.export.result",
+		"cgi-bin/export/get_result",
 		url.Values{"jobid": []string{jobID}},
 		result,
 	)

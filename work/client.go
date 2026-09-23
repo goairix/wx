@@ -81,7 +81,7 @@ func NewClient(config Config, options ...Option) (*Client, error) {
 	)
 	executor := api.New(transportClient, client.auth)
 	client.login = workauth.NewClient(executor, config.CorpID, config.AgentID)
-	client.contact = contact.NewClient(executor)
+	client.contact = contact.NewClient(executor, config.EncodingAESKey)
 	client.customer = customer.NewClient(executor)
 	client.message = message.NewClient(executor, config.AgentID)
 	client.kefu = kf.NewClient(executor)
