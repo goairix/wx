@@ -54,6 +54,10 @@ type handler struct {
 
 // NewHandler builds an HTTP handler for XML and JSON webhook bodies.
 func NewHandler(next Handler, options ...Option) http.Handler {
+	return newHandler(next, options...)
+}
+
+func newHandler(next Handler, options ...Option) *handler {
 	h := &handler{next: next, errorResponse: func(error) Response { return Response{Status: http.StatusBadRequest} }}
 	for _, option := range options {
 		if option != nil {

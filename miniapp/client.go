@@ -13,6 +13,7 @@ import (
 	"github.com/goairix/wx/v2/miniapp/qrcode"
 	"github.com/goairix/wx/v2/miniapp/security"
 	"github.com/goairix/wx/v2/miniapp/user"
+	miniappwebhook "github.com/goairix/wx/v2/miniapp/webhook"
 	"github.com/goairix/wx/v2/miniapp/wxacode"
 )
 
@@ -29,6 +30,7 @@ type Client struct {
 	codes     *wxacode.Client
 	security  *security.Client
 	encryptor *encryptor.Encryptor
+	webhook   *miniappwebhook.Client
 }
 
 // NewClient constructs a context-aware miniapp client.
@@ -78,6 +80,11 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 	c.codes = wxacode.New(tr, c.token)
 	c.security = security.New(tr, c.token)
 	c.encryptor = encryptor.New()
+	c.webhook = miniappwebhook.NewClient(
+		config.AppID,
+		config.Token,
+		config.EncodingAESKey,
+	)
 	return c, nil
 }
 
@@ -127,4 +134,9 @@ func (c *Client) Security() *security.Client {
 
 func (c *Client) Encryptor() *encryptor.Encryptor {
 	return c.encryptor
+}
+
+// Webhook returns the typed callback adapter.
+func (c *Client) Webhook() *miniappwebhook.Client {
+	return c.webhook
 }

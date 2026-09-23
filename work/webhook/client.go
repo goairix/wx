@@ -1,15 +1,12 @@
-// Package webhook contains enterprise WeChat callback handling.
+// Package webhook contains typed enterprise WeChat callback handling.
 package webhook
 
 import (
-	"bytes"
-	"encoding/base64"
+	"context"
+	"encoding/json"
 	"encoding/xml"
-	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"strings"
 
 	corewebhook "github.com/goairix/wx/v2/core/webhook"
 )
@@ -21,6 +18,7 @@ type Client struct {
 	encodingAESKey string
 }
 
+// NewClient constructs an enterprise callback adapter.
 func NewClient(corpID, token, encodingAESKey string) *Client {
 	return &Client{
 		corpID:         corpID,
@@ -29,15 +27,33 @@ func NewClient(corpID, token, encodingAESKey string) *Client {
 	}
 }
 
-// Event contains common enterprise callback fields.
+// Event contains the fields shared by supported enterprise callbacks. Fields
+// that do not apply to a particular event remain at their zero value.
 type Event struct {
-	ToUserName   string `xml:"ToUserName" json:"ToUserName"`
-	FromUserName string `xml:"FromUserName" json:"FromUserName"`
-	CreateTime   int64  `xml:"CreateTime" json:"CreateTime"`
-	MessageType  string `xml:"MsgType" json:"MsgType"`
-	Event        string `xml:"Event" json:"Event"`
-	ChangeType   string `xml:"ChangeType" json:"ChangeType"`
-	AgentID      int64  `xml:"AgentID" json:"AgentID"`
+	ToUserName     string `xml:"ToUserName" json:"ToUserName"`
+	FromUserName   string `xml:"FromUserName" json:"FromUserName"`
+	CreateTime     int64  `xml:"CreateTime" json:"CreateTime"`
+	MessageType    string `xml:"MsgType" json:"MsgType"`
+	Event          string `xml:"Event" json:"Event"`
+	ChangeType     string `xml:"ChangeType" json:"ChangeType"`
+	AgentID        int64  `xml:"AgentID" json:"AgentID"`
+	SuiteID        string `xml:"SuiteId" json:"SuiteId"`
+	SuiteTicket    string `xml:"SuiteTicket" json:"SuiteTicket"`
+	AuthCode       string `xml:"AuthCode" json:"AuthCode"`
+	TimeStamp      int64  `xml:"TimeStamp" json:"TimeStamp"`
+	UserID         string `xml:"UserID" json:"UserID"`
+	NewUserID      string `xml:"NewUserID" json:"NewUserID"`
+	Name           string `xml:"Name" json:"Name"`
+	Department     string `xml:"Department" json:"Department"`
+	PartyID        int    `xml:"Id" json:"Id"`
+	ParentID       int    `xml:"ParentId" json:"ParentId"`
+	TagID          int    `xml:"TagId" json:"TagId"`
+	ExternalUserID string `xml:"ExternalUserID" json:"ExternalUserID"`
+	State          string `xml:"State" json:"State"`
+	WelcomeCode    string `xml:"WelcomeCode" json:"WelcomeCode"`
+	ChatID         string `xml:"ChatId" json:"ChatId"`
+	UpdateDetail   string `xml:"UpdateDetail" json:"UpdateDetail"`
+	JoinScene      int    `xml:"JoinScene" json:"JoinScene"`
 }
 
 // SuiteTicketEvent represents a third-party suite ticket callback.
@@ -95,6 +111,22 @@ type BatchJobEvent struct {
 	} `xml:"BatchJob" json:"BatchJob"`
 }
 
+// Handler processes a typed enterprise callback event.
+type Handler interface {
+	Handle(context.Context, Event) (corewebhook.Response, error)
+}
+
+// HandlerFunc adapts a function to Handler.
+type HandlerFunc func(context.Context, Event) (corewebhook.Response, error)
+
+// Handle calls f with the decoded event.
+func (f HandlerFunc) Handle(
+	ctx context.Context,
+	event Event,
+) (corewebhook.Response, error) {
+	return f(ctx, event)
+}
+
 type handlerOptions struct {
 	errorResponse corewebhook.ErrorResponse
 }
@@ -109,168 +141,61 @@ func WithErrorResponse(policy corewebhook.ErrorResponse) Option {
 	}
 }
 
-// Handler returns an HTTP adapter for URL verification and callback delivery.
-func (c *Client) Handler(next corewebhook.Handler, options ...Option) http.Handler {
-	settings := handlerOptions{
-		errorResponse: func(error) corewebhook.Response {
-			return corewebhook.Response{Status: http.StatusBadRequest}
-		},
-	}
+// Handler returns an HTTP adapter that verifies and decodes callbacks.
+func (c *Client) Handler(next Handler, options ...Option) http.Handler {
+	return c.RawHandler(
+		corewebhook.HandlerFunc(func(
+			ctx context.Context,
+			payload corewebhook.Payload,
+		) (corewebhook.Response, error) {
+			var event Event
+			if err := decode(payload, &event); err != nil {
+				return corewebhook.Response{}, err
+			}
+			return next.Handle(ctx, event)
+		}),
+		options...,
+	)
+}
+
+// RawHandler returns an HTTP adapter that retains the generic core payload.
+func (c *Client) RawHandler(
+	next corewebhook.Handler,
+	options ...Option,
+) http.Handler {
+	settings := new(handlerOptions)
 	for _, configure := range options {
 		if configure != nil {
-			configure(&settings)
+			configure(settings)
 		}
 	}
-	return &callbackHandler{
-		client:        c,
-		next:          next,
-		errorResponse: settings.errorResponse,
-		configError:   c.validate(),
+	coreOptions := make([]corewebhook.Option, 0, 1)
+	if settings.errorResponse != nil {
+		coreOptions = append(
+			coreOptions,
+			corewebhook.WithErrorResponse(settings.errorResponse),
+		)
 	}
-}
-
-type callbackHandler struct {
-	client        *Client
-	next          corewebhook.Handler
-	errorResponse corewebhook.ErrorResponse
-	configError   error
-}
-
-func (h *callbackHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	if h.configError != nil {
-		h.writeError(writer, h.configError)
-		return
-	}
-	if request.Method == http.MethodGet {
-		h.verifyURL(writer, request)
-		return
-	}
-	if request.Method != http.MethodPost {
-		writer.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-	body, err := io.ReadAll(request.Body)
-	if err != nil {
-		h.writeError(writer, err)
-		return
-	}
-	body, err = h.decode(request, body)
-	if err != nil {
-		h.writeError(writer, err)
-		return
-	}
-	request.Body = io.NopCloser(bytes.NewReader(body))
-	delegate := corewebhook.NewHandler(
-		h.next,
-		corewebhook.WithErrorResponse(h.errorResponse),
+	return corewebhook.NewCallbackHandler(
+		corewebhook.CallbackConfig{
+			ReceiverID:     c.corpID,
+			Token:          c.token,
+			EncodingAESKey: c.encodingAESKey,
+		},
+		next,
+		coreOptions...,
 	)
-	delegate.ServeHTTP(writer, request)
 }
 
-func (c *Client) validate() error {
-	if c == nil || strings.TrimSpace(c.token) == "" {
-		return errors.New("work webhook: token is required")
+func decode(payload corewebhook.Payload, target interface{}) error {
+	var err error
+	if payload.Format == "json" {
+		err = json.Unmarshal(payload.Raw, target)
+	} else {
+		err = xml.Unmarshal(payload.Raw, target)
 	}
-	if c.encodingAESKey == "" {
-		return nil
-	}
-	encodedKey := c.encodingAESKey
-	encodedKey += "==="[:(4-len(encodedKey)%4)%4]
-	key, err := base64.StdEncoding.DecodeString(encodedKey)
-	if err != nil || len(key) != 32 {
-		return errors.New("work webhook: invalid encoding AES key")
+	if err != nil {
+		return fmt.Errorf("decode work webhook event: %w", err)
 	}
 	return nil
-}
-
-func (h *callbackHandler) verifyURL(writer http.ResponseWriter, request *http.Request) {
-	query := request.URL.Query()
-	timestamp := query.Get("timestamp")
-	nonce := query.Get("nonce")
-	echo := query.Get("echostr")
-	signature := query.Get("msg_signature")
-	if signature != "" {
-		err := corewebhook.VerifyMessageSignature(
-			h.client.token,
-			timestamp,
-			nonce,
-			echo,
-			signature,
-		)
-		if err == nil {
-			var decoded []byte
-			decoded, err = corewebhook.DecryptMessage(
-				h.client.encodingAESKey,
-				echo,
-				h.client.corpID,
-			)
-			if err == nil {
-				echo = string(decoded)
-			}
-		}
-		if err != nil {
-			h.writeError(writer, err)
-			return
-		}
-	} else if err := corewebhook.VerifySignature(
-		h.client.token,
-		timestamp,
-		nonce,
-		query.Get("signature"),
-	); err != nil {
-		h.writeError(writer, err)
-		return
-	}
-	writer.WriteHeader(http.StatusOK)
-	_, _ = writer.Write([]byte(echo))
-}
-
-func (h *callbackHandler) decode(request *http.Request, body []byte) ([]byte, error) {
-	var envelope struct {
-		Encrypted string `xml:"Encrypt"`
-	}
-	if err := xml.Unmarshal(body, &envelope); err != nil || envelope.Encrypted == "" {
-		err := corewebhook.VerifySignature(
-			h.client.token,
-			request.URL.Query().Get("timestamp"),
-			request.URL.Query().Get("nonce"),
-			request.URL.Query().Get("signature"),
-		)
-		return body, err
-	}
-	query := request.URL.Query()
-	err := corewebhook.VerifyMessageSignature(
-		h.client.token,
-		query.Get("timestamp"),
-		query.Get("nonce"),
-		envelope.Encrypted,
-		query.Get("msg_signature"),
-	)
-	if err != nil {
-		return nil, err
-	}
-	plain, err := corewebhook.DecryptMessage(
-		h.client.encodingAESKey,
-		envelope.Encrypted,
-		h.client.corpID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("decrypt work callback: %w", err)
-	}
-	return plain, nil
-}
-
-func (h *callbackHandler) writeError(writer http.ResponseWriter, err error) {
-	response := h.errorResponse(err)
-	for key, values := range response.Header {
-		for _, value := range values {
-			writer.Header().Add(key, value)
-		}
-	}
-	status := response.Status
-	if status == 0 {
-		status = http.StatusBadRequest
-	}
-	writer.WriteHeader(status)
-	_, _ = writer.Write(response.Body)
 }

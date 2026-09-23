@@ -16,6 +16,7 @@ import (
 	"github.com/goairix/wx/v2/openplatform/code"
 	"github.com/goairix/wx/v2/openplatform/component"
 	"github.com/goairix/wx/v2/openplatform/template"
+	openplatformwebhook "github.com/goairix/wx/v2/openplatform/webhook"
 	workauthorizer "github.com/goairix/wx/v2/work/authorizer"
 )
 
@@ -33,6 +34,7 @@ type Client struct {
 	mu            sync.Mutex
 	credentials   map[string]*authorizerCredential
 	refreshTokens RefreshTokenStore
+	webhook       *openplatformwebhook.Client
 }
 
 // NewClient constructs an Open Platform client without making network calls.
@@ -87,6 +89,11 @@ func NewClient(config Config, options ...Option) (*Client, error) {
 	)
 	client.code = code.NewClient(transportClient, client.authorizerManager)
 	client.templates = template.NewClient(transportClient, client.component)
+	client.webhook = openplatformwebhook.NewClient(
+		config.AppID,
+		config.Token,
+		config.EncodingAESKey,
+	)
 	return client, nil
 }
 
@@ -113,6 +120,11 @@ func (c *Client) Code() *code.Client {
 // Templates returns component code template operations.
 func (c *Client) Templates() *template.Client {
 	return c.templates
+}
+
+// Webhook returns the typed component callback adapter.
+func (c *Client) Webhook() *openplatformwebhook.Client {
+	return c.webhook
 }
 
 // AcceptVerifyTicket stores a verified ticket event for this component.

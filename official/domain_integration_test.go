@@ -87,6 +87,9 @@ func TestOfficialDomainSurface(t *testing.T) {
 	if client.Article() == nil {
 		t.Fatal("article domain is not mounted")
 	}
+	if client.Webhook() == nil {
+		t.Fatal("webhook domain is not mounted")
+	}
 
 	_ = message.Message{}
 }

@@ -21,15 +21,15 @@ type contextKey string
 
 func TestHandlerVerifiesGETAndPlainPOST(t *testing.T) {
 	client := NewClient("corp", "token", "")
-	next := corewebhook.HandlerFunc(func(
+	next := HandlerFunc(func(
 		ctx context.Context,
-		payload corewebhook.Payload,
+		event Event,
 	) (corewebhook.Response, error) {
 		if ctx.Value(contextKey("request")) != "value" {
 			t.Fatal("request context was not propagated")
 		}
-		if payload.Values["Event"] != "change_contact" {
-			t.Fatalf("event = %q", payload.Values["Event"])
+		if event.Event != "change_contact" {
+			t.Fatalf("event = %q", event.Event)
 		}
 		return corewebhook.Response{Status: http.StatusOK, Body: []byte("success")}, nil
 	})
@@ -72,12 +72,12 @@ func TestHandlerDecryptsPOSTAndUsesErrorPolicy(t *testing.T) {
 	key := bytes.Repeat([]byte("k"), 32)
 	encodedKey := strings.TrimRight(base64.StdEncoding.EncodeToString(key), "=")
 	client := NewClient("corp", "token", encodedKey)
-	next := corewebhook.HandlerFunc(func(
+	next := HandlerFunc(func(
 		ctx context.Context,
-		payload corewebhook.Payload,
+		event Event,
 	) (corewebhook.Response, error) {
-		if payload.Values["SuiteTicket"] != "ticket-one" {
-			t.Fatalf("ticket = %q", payload.Values["SuiteTicket"])
+		if event.SuiteTicket != "ticket-one" {
+			t.Fatalf("ticket = %q", event.SuiteTicket)
 		}
 		return corewebhook.EmptyResponse(), nil
 	})
@@ -123,9 +123,9 @@ func TestHandlerRejectsEmptyTokenBeforeDispatch(t *testing.T) {
 	encodedKey := strings.TrimRight(base64.StdEncoding.EncodeToString(key), "=")
 	client := NewClient("corp", "", encodedKey)
 	nextCalls := 0
-	next := corewebhook.HandlerFunc(func(
+	next := HandlerFunc(func(
 		ctx context.Context,
-		payload corewebhook.Payload,
+		event Event,
 	) (corewebhook.Response, error) {
 		nextCalls++
 		return corewebhook.EmptyResponse(), nil
@@ -198,9 +198,9 @@ func TestHandlerRejectsInvalidEncodingAESKey(t *testing.T) {
 	client := NewClient("corp", "token", "invalid")
 	nextCalls := 0
 	handler := client.Handler(
-		corewebhook.HandlerFunc(func(
+		HandlerFunc(func(
 			ctx context.Context,
-			payload corewebhook.Payload,
+			event Event,
 		) (corewebhook.Response, error) {
 			nextCalls++
 			return corewebhook.EmptyResponse(), nil

@@ -16,6 +16,7 @@ import (
 	"github.com/goairix/wx/v2/official/oauth"
 	"github.com/goairix/wx/v2/official/qrcode"
 	"github.com/goairix/wx/v2/official/user"
+	officialwebhook "github.com/goairix/wx/v2/official/webhook"
 )
 
 const defaultBaseURL = "https://api.weixin.qq.com"
@@ -33,6 +34,7 @@ type Client struct {
 	qrCode     *qrcode.Client
 	jsSDK      *jssdk.Client
 	users      *user.Client
+	webhook    *officialwebhook.Client
 }
 
 // NewClient constructs a context-aware official account client.
@@ -86,6 +88,11 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 	client.qrCode = qrcode.NewClient(executor)
 	client.jsSDK = jssdk.NewClient(executor, config.AppID, credentialCache)
 	client.users = user.NewClient(tr, client.auth)
+	client.webhook = officialwebhook.NewClient(
+		config.AppID,
+		config.Token,
+		config.EncodingAESKey,
+	)
 	return client, nil
 }
 
@@ -127,6 +134,11 @@ func (c *Client) JSSDK() *jssdk.Client {
 // Users returns the user management domain client.
 func (c *Client) Users() *user.Client {
 	return c.users
+}
+
+// Webhook returns the typed callback adapter.
+func (c *Client) Webhook() *officialwebhook.Client {
+	return c.webhook
 }
 
 // Config returns a copy of the client configuration.

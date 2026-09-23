@@ -25,6 +25,20 @@ type recordedRequest struct {
 	body   map[string]interface{}
 }
 
+func TestClientMountsWebhookDomain(t *testing.T) {
+	client, err := NewClient(Config{
+		AppID:     "component-app",
+		AppSecret: "secret",
+		Token:     "token",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.Webhook() == nil {
+		t.Fatal("webhook domain is not mounted")
+	}
+}
+
 type requestRecorder struct {
 	mu       sync.Mutex
 	requests []recordedRequest
