@@ -1,24 +1,67 @@
 package verification
 
-import "testing"
+import (
+	"context"
+	"encoding/json"
+	"testing"
+)
 
-type fakeCaller struct{ path string }
+type fakeCaller struct {
+	path         string
+	req          interface{}
+	relateOpenID string
+}
 
-func (f *fakeCaller) Call(path string, req interface{}, result interface{}) error {
+func (f *fakeCaller) Call(
+	_ context.Context,
+	path string,
+	req interface{},
+	result interface{},
+) error {
 	f.path = path
-	return nil
+	f.req = req
+	return json.Unmarshal(
+		[]byte(`{"verifyOrderId":"order-1","suc":true}`),
+		result,
+	)
 }
-func (f *fakeCaller) CallWithRelated(path string, req interface{}, result interface{}, relateOpenID string) error {
-	return f.Call(path, req, result)
+
+func (f *fakeCaller) CallWithRelated(
+	ctx context.Context,
+	path string,
+	req interface{},
+	result interface{},
+	relateOpenID string,
+) error {
+	f.relateOpenID = relateOpenID
+	return f.Call(ctx, path, req, result)
 }
-func TestVerificationEndpoints(t *testing.T) {
-	f := &fakeCaller{}
-	_, _ = New(f).RegisterFaceOrder(RegisterFaceOrderRequest{})
-	if f.path != faceOrderPath {
-		t.Fatalf("path=%q", f.path)
+
+func TestVerificationRequestAndResponse(t *testing.T) {
+	caller := new(fakeCaller)
+	request := CheckUniformVerifyResultRequest{
+		VerifyOrderID: "order-1",
+		VerifyResult:  "result",
 	}
-	_, _ = New(f).CheckUniformVerifyResult(CheckUniformVerifyResultRequest{}, "openid")
-	if f.path != uniformResultPath {
-		t.Fatalf("path=%q", f.path)
+	got, err := New(caller).CheckUniformVerifyResult(
+		context.Background(),
+		request,
+		"openid",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if caller.path != uniformResultPath ||
+		caller.req != request ||
+		caller.relateOpenID != "openid" {
+		t.Fatalf(
+			"path=%q request=%+v relateOpenID=%q",
+			caller.path,
+			caller.req,
+			caller.relateOpenID,
+		)
+	}
+	if !got.Succeed {
+		t.Fatalf("response=%+v", got)
 	}
 }

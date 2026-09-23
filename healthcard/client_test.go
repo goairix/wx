@@ -1,36 +1,45 @@
 package healthcard
 
 import (
+	"context"
 	"encoding/json"
+	stderrors "errors"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
-	kernelContracts "github.com/goairix/wx/v2/kernel/contracts"
+	"github.com/goairix/wx/v2/core/auth"
+	wxerrors "github.com/goairix/wx/v2/core/errors"
 )
 
-type testTokenProvider struct{ calls int }
-
-func (p *testTokenProvider) GetAccessToken() (kernelContracts.AccessToken, error) {
-	p.calls++
-	return kernelContracts.AccessToken{AccessToken: "external-token"}, nil
+func testConfig() Config {
+	return Config{
+		AppID:        "app",
+		AppSecret:    "secret",
+		HospitalID:   "hospital",
+		RelatedAppID: "related-app",
+	}
 }
 
-func TestRootTransportAndFacades(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"commonOut":{"requestId":"rid","resultCode":0},"rsp":{"appToken":"token","expiresIn":7200}}`))
-	}))
-	defer server.Close()
-
-	client := New("app", "secret", "hospital", "related-app", WithBaseURL(server.URL))
+func TestNewClientMountsEveryDomain(t *testing.T) {
+	client, err := NewClient(testConfig(), WithAppToken("token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.Card() == nil ||
+		client.Patient() == nil ||
+		client.Verification() == nil ||
+		client.Usage() == nil ||
+		client.Device() == nil ||
+		client.Notification() == nil ||
+		client.AntiFraud() == nil {
+		t.Fatal("all domain clients must be mounted")
+	}
 	if _, ok := interface{}(client).(interface {
-		Call(string, interface{}, interface{}) error
+		Call(context.Context, string, interface{}, interface{}) error
 	}); !ok {
 		t.Fatal("Client must implement contracts.Caller")
-	}
-	if client.Card() == nil || client.Patient() == nil || client.Verification() == nil || client.Usage() == nil || client.Device() == nil || client.Notification() == nil || client.AntiFraud() == nil {
-		t.Fatal("all domain facades must be mounted")
 	}
 }
 
@@ -55,25 +64,113 @@ func TestRelatedCommonInIsOnlySentForRelatedCalls(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New("app", "secret", "hospital", "related-app", WithBaseURL(server.URL), WithAppToken("token"), WithRequestID(func() string { return "rid" }))
-	if err := client.Call("/plain", struct{}{}, &struct{}{}); err != nil {
+	client, err := NewClient(
+		testConfig(),
+		WithBaseURL(server.URL),
+		WithAppToken("token"),
+		WithRequestID(func() string { return "rid" }),
+	)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := client.CallWithRelated("/related", struct{}{}, &struct{}{}, "user-openid"); err != nil {
+	ctx := context.Background()
+	if err := client.Call(ctx, "/plain", struct{}{}, &struct{}{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.CallWithRelated(
+		ctx,
+		"/related",
+		struct{}{},
+		&struct{}{},
+		"user-openid",
+	); err != nil {
 		t.Fatal(err)
 	}
 	if plain.CommonIn.RelateAppID != "" || plain.CommonIn.RelateOpenID != "" {
 		t.Fatalf("plain call unexpectedly included related identity: %+v", plain.CommonIn)
 	}
-	if related.CommonIn.RelateAppID != "related-app" || related.CommonIn.RelateOpenID != "user-openid" {
+	if related.CommonIn.RelateAppID != "related-app" ||
+		related.CommonIn.RelateOpenID != "user-openid" {
 		t.Fatalf("related call missing identity: %+v", related.CommonIn)
 	}
 }
 
-func TestExternalTokenProvider(t *testing.T) {
-	provider := &testTokenProvider{}
-	client := New("app", "secret", "hospital", "related-app", WithTokenProvider(provider))
-	if got, err := client.AppToken(); err != nil || got != "external-token" || provider.calls != 1 {
-		t.Fatalf("token=%q calls=%d err=%v", got, provider.calls, err)
+func TestCanceledContextStopsBeforeSigningAndSending(t *testing.T) {
+	var requests int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requests, 1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	var requestIDs int32
+	client, err := NewClient(
+		testConfig(),
+		WithBaseURL(server.URL),
+		WithAppToken("token"),
+		WithRequestID(func() string {
+			atomic.AddInt32(&requestIDs, 1)
+			return "rid"
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err = client.Call(ctx, "/cancel", struct{}{}, &struct{}{})
+	if !stderrors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+	if got := atomic.LoadInt32(&requestIDs); got != 0 {
+		t.Fatalf("request IDs generated = %d, want 0", got)
+	}
+	if got := atomic.LoadInt32(&requests); got != 0 {
+		t.Fatalf("requests sent = %d, want 0", got)
+	}
+}
+
+func TestPlatformErrorKeepsHealthcardMetadata(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"commonOut":{"requestId":"health-rid","resultCode":4001,"errMsg":"invalid card"},"rsp":null}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(
+		testConfig(),
+		WithBaseURL(server.URL),
+		WithAppToken("token"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = client.Call(context.Background(), "/cards", struct{}{}, &struct{}{})
+
+	var platformErr *wxerrors.Error
+	if !stderrors.As(err, &platformErr) {
+		t.Fatalf("error type = %T, want *core/errors.Error", err)
+	}
+	if platformErr.Platform != "healthcard" ||
+		platformErr.Code != "4001" ||
+		platformErr.Message != "invalid card" ||
+		platformErr.RequestID != "health-rid" {
+		t.Fatalf("unexpected platform error: %+v", platformErr)
+	}
+}
+
+func TestExternalCredentialProvider(t *testing.T) {
+	var calls int32
+	provider := auth.ProviderFunc(func(context.Context) (auth.Credential, error) {
+		atomic.AddInt32(&calls, 1)
+		return auth.Credential{AccessToken: "external-token"}, nil
+	})
+	client, err := NewClient(testConfig(), WithCredentialProvider(provider))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := client.AppToken(context.Background())
+	if err != nil || got != "external-token" || atomic.LoadInt32(&calls) != 1 {
+		t.Fatalf("token=%q calls=%d err=%v", got, calls, err)
 	}
 }

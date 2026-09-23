@@ -1,8 +1,21 @@
+// Package contracts defines the narrow request interface used by healthcard domains.
 package contracts
 
-// Caller 是领域模块调用健康卡平台的最小接口。
-// 根 healthcard.Client 实现该接口，领域包因此可以独立使用和测试。
+import "context"
+
+// Caller executes requests through the root healthcard client.
 type Caller interface {
-	Call(path string, req interface{}, result interface{}) error
-	CallWithRelated(path string, req interface{}, result interface{}, relateOpenID string) error
+	Call(
+		ctx context.Context,
+		path string,
+		req interface{},
+		result interface{},
+	) error
+	CallWithRelated(
+		ctx context.Context,
+		path string,
+		req interface{},
+		result interface{},
+		relateOpenID string,
+	) error
 }

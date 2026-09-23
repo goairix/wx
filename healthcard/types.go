@@ -1,8 +1,12 @@
 package healthcard
 
-import "strconv"
+import (
+	"encoding/json"
 
-// CommonIn 是所有健康卡请求共用的公共入参。
+	wxerrors "github.com/goairix/wx/v2/core/errors"
+)
+
+// CommonIn is the common request section required by the health card platform.
 type CommonIn struct {
 	AppToken     string `json:"appToken"`
 	RequestID    string `json:"requestId"`
@@ -14,31 +18,28 @@ type CommonIn struct {
 	RelateOpenID string `json:"relateOpenId,omitempty"`
 }
 
-// CommonOut 是腾讯平台返回的公共结果信息。
+// CommonOut is the common response section returned by the platform.
 type CommonOut struct {
 	RequestID  string `json:"requestId"`
 	ResultCode int    `json:"resultCode"`
 	ErrMsg     string `json:"errMsg"`
 }
 
-// AppTokenResponse 是 getAppToken 接口返回的凭证及有效期。
+// AppTokenResponse is returned by the getAppToken endpoint.
 type AppTokenResponse struct {
 	AppToken  string `json:"appToken"`
 	ExpiresIn int    `json:"expiresIn"`
 }
 
-// APIError 表示腾讯健康卡平台返回了业务错误。
-type APIError struct {
-	RequestID string
-	Code      int
-	Message   string
-}
-
-func (e *APIError) Error() string {
-	return "health card api error: code=" + strconv.Itoa(e.Code) + ", request_id=" + e.RequestID + ", message=" + e.Message
-}
+// APIError is retained as a source-compatible name for the v2 structured error.
+type APIError = wxerrors.Error
 
 type requestEnvelope struct {
 	CommonIn CommonIn    `json:"commonIn"`
 	Req      interface{} `json:"req"`
+}
+
+type responseEnvelope struct {
+	CommonOut CommonOut       `json:"commonOut"`
+	Rsp       json.RawMessage `json:"rsp"`
 }

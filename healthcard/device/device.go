@@ -1,6 +1,10 @@
 package device
 
-import "github.com/goairix/wx/v2/healthcard/contracts"
+import (
+	"context"
+
+	"github.com/goairix/wx/v2/healthcard/contracts"
+)
 
 const (
 	createQRCodePath = "/rest/auth/TXHealthCard/EHealthCardServer/ToolsObj/ssmGenQrCode"
@@ -8,21 +12,31 @@ const (
 )
 
 // Client 封装自助机扫码授权设备接口。
-type Client struct{ caller contracts.Caller }
+type Client struct {
+	caller contracts.Caller
+}
 
 // New 创建自助机扫码授权领域客户端，通常由根客户端的 Device 方法调用。
-func New(caller contracts.Caller) *Client { return &Client{caller: caller} }
+func New(caller contracts.Caller) *Client {
+	return &Client{caller: caller}
+}
 
 // CreateAuthorizationQRCode 为自助机生成用户扫码授权二维码。
-func (c *Client) CreateAuthorizationQRCode(req CreateAuthorizationQRCodeRequest) (CreateAuthorizationQRCodeResponse, error) {
+func (c *Client) CreateAuthorizationQRCode(
+	ctx context.Context,
+	req CreateAuthorizationQRCodeRequest,
+) (CreateAuthorizationQRCodeResponse, error) {
 	var out CreateAuthorizationQRCodeResponse
-	err := c.caller.Call(createQRCodePath, req, &out)
+	err := c.caller.Call(ctx, createQRCodePath, req, &out)
 	return out, err
 }
 
 // QueryAuthorizationQRCode 查询用户是否已经完成扫码授权。
-func (c *Client) QueryAuthorizationQRCode(req QueryAuthorizationQRCodeRequest) (QueryAuthorizationQRCodeResponse, error) {
+func (c *Client) QueryAuthorizationQRCode(
+	ctx context.Context,
+	req QueryAuthorizationQRCodeRequest,
+) (QueryAuthorizationQRCodeResponse, error) {
 	var out QueryAuthorizationQRCodeResponse
-	err := c.caller.Call(queryQRCodePath, req, &out)
+	err := c.caller.Call(ctx, queryQRCodePath, req, &out)
 	return out, err
 }

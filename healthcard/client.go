@@ -1,15 +1,19 @@
+// Package healthcard provides a context-aware Tencent electronic health card client.
 package healthcard
 
 import (
+	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
+	"github.com/goairix/wx/v2/core/auth"
+	corecache "github.com/goairix/wx/v2/core/cache"
+	wxerrors "github.com/goairix/wx/v2/core/errors"
+	"github.com/goairix/wx/v2/core/transport"
 	"github.com/goairix/wx/v2/healthcard/antifraud"
 	"github.com/goairix/wx/v2/healthcard/card"
 	"github.com/goairix/wx/v2/healthcard/device"
@@ -17,186 +21,209 @@ import (
 	"github.com/goairix/wx/v2/healthcard/patient"
 	"github.com/goairix/wx/v2/healthcard/usage"
 	"github.com/goairix/wx/v2/healthcard/verification"
-	kernelContracts "github.com/goairix/wx/v2/kernel/contracts"
-	"github.com/goairix/wx/v2/support/cache"
-	"github.com/goairix/wx/v2/support/lock"
 )
 
 const defaultBaseURL = "https://p-healthopen.tengmed.com"
 const getAppTokenPath = "/rest/auth/HealthCard/HealthOpenAuth/AuthObj/getAppToken"
 
-// Client 是腾讯电子健康卡开放平台的根客户端。
-// 它负责公共参数组装、请求签名、appToken 管理、HTTP 调用和统一错误转换，
-// 业务接口通过 Card、Patient 等领域入口访问。
+// Client is the root client for the Tencent electronic health card platform.
 type Client struct {
-	appID               string
-	appSecret           string
-	initialAppToken     string
-	hospitalID          string
-	baseURL             string
-	channelNum          int
-	relateAppID         string
-	httpClient          *http.Client
-	now                 func() time.Time
-	requestID           func() string
-	tokenProvider       kernelContracts.AccessTokenProvider
-	tokenCache          cache.Cache
-	tokenCacheKeyPrefix string
-	tokenLocker         lock.Locker
+	config       Config
+	transport    *transport.Client
+	auth         *auth.Manager
+	channelNum   int
+	now          func() time.Time
+	requestID    func() string
+	card         *card.Client
+	patient      *patient.Client
+	verification *verification.Client
+	usage        *usage.Client
+	device       *device.Client
+	notification *notification.Client
+	antifraud    *antifraud.Client
 }
 
-// Card 返回健康卡注册、查询和展码领域客户端。
-func (client *Client) Card() *card.Client { return card.New(client) }
+// NewClient constructs a health card client without making network calls.
+func NewClient(config Config, options ...Option) (*Client, error) {
+	if strings.TrimSpace(config.AppID) == "" {
+		return nil, fmt.Errorf("healthcard: AppID is required")
+	}
+	if strings.TrimSpace(config.AppSecret) == "" {
+		return nil, fmt.Errorf("healthcard: AppSecret is required")
+	}
+	if strings.TrimSpace(config.HospitalID) == "" {
+		return nil, fmt.Errorf("healthcard: HospitalID is required")
+	}
 
-// Patient 返回建档和实名就诊人领域客户端。
-func (client *Client) Patient() *patient.Client { return patient.New(client) }
-
-// Verification 返回人脸及实人认证领域客户端。
-func (client *Client) Verification() *verification.Client { return verification.New(client) }
-
-// Usage 返回用卡数据上报领域客户端。
-func (client *Client) Usage() *usage.Client { return usage.New(client) }
-
-// Device 返回自助机扫码设备领域客户端。
-func (client *Client) Device() *device.Client { return device.New(client) }
-
-// Notification 返回平台通知领域客户端。
-func (client *Client) Notification() *notification.Client { return notification.New(client) }
-
-// AntiFraud 返回预约防黄牛领域客户端。
-func (client *Client) AntiFraud() *antifraud.Client { return antifraud.New(client) }
-
-// Option 用于配置根客户端。
-type Option func(*Client)
-
-// WithAccessTokenProvider 注入外部 appToken 提供器。设置后不再请求腾讯的凭证接口。
-func WithAccessTokenProvider(provider kernelContracts.AccessTokenProvider) Option {
-	return func(client *Client) { client.tokenProvider = provider }
-}
-
-// WithTokenProvider 是 WithAccessTokenProvider 的简写别名。
-func WithTokenProvider(provider kernelContracts.AccessTokenProvider) Option {
-	return WithAccessTokenProvider(provider)
-}
-
-// WithBaseURL 覆盖腾讯生产环境地址，通常用于测试环境或 httptest.Server。
-func WithBaseURL(baseURL string) Option {
-	return func(client *Client) { client.baseURL = strings.TrimRight(baseURL, "/") }
-}
-
-// WithHTTPClient 设置底层 HTTP 客户端，可用于设置超时、代理和自定义传输层。
-func WithHTTPClient(httpClient *http.Client) Option {
-	return func(client *Client) {
-		if httpClient != nil {
-			client.httpClient = httpClient
+	settings := new(option)
+	for _, configure := range options {
+		if configure != nil {
+			configure(settings)
 		}
 	}
-}
-
-// WithChannelNum 设置腾讯平台要求的渠道编号。
-func WithChannelNum(channelNum int) Option {
-	return func(client *Client) { client.channelNum = channelNum }
-}
-
-// WithAppToken 注入已经获取的 appToken。
-// 未注入时，客户端会通过 getAppToken 接口自动获取并在内存中缓存。
-func WithAppToken(appToken string) Option {
-	return func(client *Client) { client.initialAppToken = appToken }
-}
-
-// WithRelatedAppID 覆盖关联的小程序或公众号 AppID。
-func WithRelatedAppID(appID string) Option {
-	return func(client *Client) { client.relateAppID = appID }
-}
-
-// WithClock 替换生成请求时间戳的时钟，主要用于测试。
-func WithClock(now func() time.Time) Option {
-	return func(client *Client) {
-		if now != nil {
-			client.now = now
-		}
+	if settings.relatedAppID != "" {
+		config.RelatedAppID = settings.relatedAppID
 	}
-}
 
-// WithRequestID 替换请求 ID 生成函数，主要用于测试和链路追踪。
-func WithRequestID(requestID func() string) Option {
-	return func(client *Client) {
-		if requestID != nil {
-			client.requestID = requestID
+	transportClient := settings.transport
+	if transportClient == nil {
+		baseURL := settings.baseURL
+		if baseURL == "" {
+			baseURL = defaultBaseURL
 		}
+		transportClient = transport.New(settings.httpClient, baseURL, settings.retry)
+		transportClient.Hook = settings.hook
 	}
-}
 
-// New 创建腾讯电子健康卡根客户端。
-// relateAppID 是实际承载健康卡流程的小程序或公众号 AppID，应与前端获取 wechatCode 的应用一致。
-func New(appID, appSecret, hospitalID, relateAppID string, opts ...Option) *Client {
 	client := &Client{
-		appID:               appID,
-		appSecret:           appSecret,
-		hospitalID:          hospitalID,
-		relateAppID:         relateAppID,
-		baseURL:             defaultBaseURL,
-		channelNum:          0,
-		httpClient:          http.DefaultClient,
-		now:                 time.Now,
-		requestID:           newRequestID,
-		tokenCacheKeyPrefix: cache.DefaultCacheKeyPrefix,
+		config:     config,
+		transport:  transportClient,
+		channelNum: settings.channelNum,
+		now:        settings.now,
+		requestID:  settings.requestID,
 	}
-	for _, opt := range opts {
-		if opt != nil {
-			opt(client)
+	if client.now == nil {
+		client.now = time.Now
+	}
+	if client.requestID == nil {
+		client.requestID = newRequestID
+	}
+
+	credentialCache := settings.cache
+	if credentialCache == nil {
+		credentialCache = corecache.NewMemory()
+	}
+	client.auth = settings.credentialManager
+	if client.auth == nil {
+		provider := settings.credentialProvider
+		if provider == nil && settings.initialAppToken != "" {
+			provider = seededTokenProvider(settings.initialAppToken)
 		}
+		if provider == nil {
+			provider = auth.ProviderFunc(client.fetchAppToken)
+		}
+		client.auth = auth.NewManager(
+			"healthcard",
+			credentialIdentity(config.AppID, config.AppSecret),
+			credentialCache,
+			provider,
+		)
 	}
-	if client.tokenCache == nil {
-		client.tokenCache = cache.NewMemoryCache()
-	}
-	if client.tokenLocker == nil {
-		client.tokenLocker = &lock.Mutex{}
-	}
-	if client.initialAppToken != "" {
-		// WithAppToken 表示调用方已经确认该 token 可用，因此按不过期凭证预置到缓存。
-		_ = client.writeCachedAppToken(client.initialAppToken, 0)
-	}
-	return client
+
+	client.card = card.New(client)
+	client.patient = patient.New(client)
+	client.verification = verification.New(client)
+	client.usage = usage.New(client)
+	client.device = device.New(client)
+	client.notification = notification.New(client)
+	client.antifraud = antifraud.New(client)
+	return client, nil
 }
 
-// AppToken 返回当前可用的 appToken。
-// 配置外部 TokenProvider 时由外部提供；否则在本地缓存有效时直接返回，
-// 缓存失效后自动请求腾讯 getAppToken 接口。
-func (client *Client) AppToken() (string, error) {
-	if client.tokenProvider != nil {
-		token, err := client.tokenProvider.GetAccessToken()
-		if err != nil {
-			return "", err
-		}
-		if token.AccessToken == "" {
-			return "", fmt.Errorf("health card app token response is empty")
-		}
-		return token.AccessToken, nil
-	}
-	if token, ok := client.readCachedAppToken(); ok {
-		return token, nil
-	}
-	client.tokenLocker.Lock()
-	defer client.tokenLocker.Unlock()
+func credentialIdentity(appID, appSecret string) string {
+	digest := sha256.Sum256([]byte(appID + "\x00" + appSecret))
+	return appID + ":" + hex.EncodeToString(digest[:])
+}
 
-	if token, ok := client.readCachedAppToken(); ok {
-		return token, nil
-	}
+func seededTokenProvider(appToken string) auth.Provider {
+	return auth.ProviderFunc(func(context.Context) (auth.Credential, error) {
+		return auth.Credential{
+			AccessToken: appToken,
+			ExpiresAt:   time.Now().AddDate(100, 0, 0),
+		}, nil
+	})
+}
 
+func (client *Client) fetchAppToken(ctx context.Context) (auth.Credential, error) {
 	var result AppTokenResponse
-	if err := client.do(getAppTokenPath, struct {
-		AppID string `json:"appId"`
-	}{AppID: client.appID}, &result, false, ""); err != nil {
-		return "", err
+	err := client.do(
+		ctx,
+		getAppTokenPath,
+		struct {
+			AppID string `json:"appId"`
+		}{AppID: client.config.AppID},
+		&result,
+		false,
+		"",
+		false,
+	)
+	if err != nil {
+		return auth.Credential{}, err
 	}
 	if result.AppToken == "" {
-		return "", fmt.Errorf("health card app token response is empty")
+		return auth.Credential{}, &wxerrors.Error{
+			Platform:  "healthcard",
+			Operation: getAppTokenPath,
+			Message:   "app token response is empty",
+		}
 	}
-	if err := client.writeCachedAppToken(result.AppToken, result.ExpiresIn); err != nil {
-		return "", err
+
+	credential := auth.Credential{AccessToken: result.AppToken}
+	if result.ExpiresIn > 0 {
+		credential.ExpiresAt = time.Now().Add(
+			time.Duration(result.ExpiresIn) * time.Second,
+		)
 	}
-	return result.AppToken, nil
+	return credential, nil
+}
+
+// AppToken returns a cached appToken or obtains a fresh one.
+func (client *Client) AppToken(ctx context.Context) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	credential, err := client.auth.Token(ctx)
+	if err != nil {
+		return "", client.wrapError(getAppTokenPath, err)
+	}
+	if credential.AccessToken == "" {
+		return "", &wxerrors.Error{
+			Platform:  "healthcard",
+			Operation: getAppTokenPath,
+			Message:   "app token response is empty",
+		}
+	}
+	return credential.AccessToken, nil
+}
+
+// Config returns a copy of the client configuration.
+func (client *Client) Config() Config {
+	return client.config
+}
+
+// Card returns health card registration, query, and QR code operations.
+func (client *Client) Card() *card.Client {
+	return client.card
+}
+
+// Patient returns patient record operations.
+func (client *Client) Patient() *patient.Client {
+	return client.patient
+}
+
+// Verification returns identity verification operations.
+func (client *Client) Verification() *verification.Client {
+	return client.verification
+}
+
+// Usage returns health card usage reporting operations.
+func (client *Client) Usage() *usage.Client {
+	return client.usage
+}
+
+// Device returns self-service authorization device operations.
+func (client *Client) Device() *device.Client {
+	return client.device
+}
+
+// Notification returns platform notification operations.
+func (client *Client) Notification() *notification.Client {
+	return client.notification
+}
+
+// AntiFraud returns appointment anti-fraud operations.
+func (client *Client) AntiFraud() *antifraud.Client {
+	return client.antifraud
 }
 
 func newRequestID() string {
@@ -205,97 +232,4 @@ func newRequestID() string {
 		return strings.ToUpper(hex.EncodeToString([]byte(time.Now().String())))
 	}
 	return strings.ToUpper(hex.EncodeToString(data))
-}
-
-func (client *Client) do(path string, req interface{}, result interface{}, related bool, relateOpenID string) error {
-	appToken := ""
-	if path != getAppTokenPath {
-		var err error
-		appToken, err = client.AppToken()
-		if err != nil {
-			return err
-		}
-	}
-	commonIn := CommonIn{
-		AppToken:   appToken,
-		RequestID:  client.requestID(),
-		HospitalID: client.hospitalID,
-		Timestamp:  fmt.Sprintf("%d", client.now().Unix()),
-		ChannelNum: client.channelNum,
-	}
-	if related {
-		commonIn.RelateAppID = client.relateAppID
-		commonIn.RelateOpenID = relateOpenID
-	}
-
-	requestValues, err := structMap(req)
-	if err != nil {
-		return err
-	}
-	commonValues, err := structMap(commonIn)
-	if err != nil {
-		return err
-	}
-	signValues := make(map[string]interface{}, len(requestValues)+len(commonValues))
-	for key, value := range commonValues {
-		signValues[key] = value
-	}
-	for key, value := range requestValues {
-		signValues[key] = value
-	}
-	commonIn.Sign = sign(signValues, client.appSecret)
-
-	body := requestEnvelope{CommonIn: commonIn, Req: req}
-	encoded, err := json.Marshal(body)
-	if err != nil {
-		return err
-	}
-	request, err := http.NewRequest(http.MethodPost, client.baseURL+path, strings.NewReader(string(encoded)))
-	if err != nil {
-		return err
-	}
-	request.Header.Set("Content-Type", "application/json;charset=utf-8")
-	response, err := client.httpClient.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	responseBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		return err
-	}
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("health card http error: status_code=%d", response.StatusCode)
-	}
-
-	var envelope struct {
-		CommonOut CommonOut       `json:"commonOut"`
-		Rsp       json.RawMessage `json:"rsp"`
-	}
-	if err := json.Unmarshal(responseBody, &envelope); err != nil {
-		return err
-	}
-	if envelope.CommonOut.ResultCode != 0 {
-		return &APIError{
-			RequestID: envelope.CommonOut.RequestID,
-			Code:      envelope.CommonOut.ResultCode,
-			Message:   envelope.CommonOut.ErrMsg,
-		}
-	}
-	if result == nil || len(envelope.Rsp) == 0 || string(envelope.Rsp) == "null" {
-		return nil
-	}
-	return json.Unmarshal(envelope.Rsp, result)
-}
-
-func structMap(value interface{}) (map[string]interface{}, error) {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
-	}
-	var values map[string]interface{}
-	if err := json.Unmarshal(encoded, &values); err != nil {
-		return nil, err
-	}
-	return values, nil
 }

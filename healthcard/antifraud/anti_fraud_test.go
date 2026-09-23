@@ -1,24 +1,58 @@
 package antifraud
 
-import "testing"
+import (
+	"context"
+	"encoding/json"
+	"testing"
+)
 
-type fakeCaller struct{ path string }
+type fakeCaller struct {
+	path string
+	req  interface{}
+}
 
-func (f *fakeCaller) Call(path string, req interface{}, result interface{}) error {
+func (f *fakeCaller) Call(
+	_ context.Context,
+	path string,
+	req interface{},
+	result interface{},
+) error {
 	f.path = path
-	return nil
+	f.req = req
+	return json.Unmarshal(
+		[]byte(`{"verify":true,"riskLevel":1,"toast":"allowed"}`),
+		result,
+	)
 }
-func (f *fakeCaller) CallWithRelated(path string, req interface{}, result interface{}, relateOpenID string) error {
-	return f.Call(path, req, result)
+
+func (f *fakeCaller) CallWithRelated(
+	ctx context.Context,
+	path string,
+	req interface{},
+	result interface{},
+	_ string,
+) error {
+	return f.Call(ctx, path, req, result)
 }
-func TestAntiFraudEndpoints(t *testing.T) {
-	f := &fakeCaller{}
-	_, _ = New(f).CheckAppointmentLimit(CheckAppointmentLimitRequest{})
-	if f.path != appointmentLimitPath {
-		t.Fatalf("path=%q", f.path)
+
+func TestAntiFraudRequestAndResponse(t *testing.T) {
+	caller := new(fakeCaller)
+	request := CheckAppointmentLimitRequest{
+		OpenID:       "openid",
+		HealthCardID: "card-1",
+		ClientIP:     "192.0.2.1",
 	}
-	_, _ = New(f).CancelAppointmentLimit(CancelAppointmentLimitRequest{})
-	if f.path != appointmentLimitPath {
-		t.Fatalf("path=%q", f.path)
+	got, err := New(caller).CheckAppointmentLimit(
+		context.Background(),
+		request,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if caller.path != appointmentLimitPath || caller.req != request {
+		t.Fatalf("path=%q request=%+v", caller.path, caller.req)
+	}
+	if !got.Verify || got.RiskLevel != 1 || got.Toast != "allowed" {
+		t.Fatalf("response=%+v", got)
 	}
 }

@@ -1,24 +1,54 @@
 package patient
 
-import "testing"
+import (
+	"context"
+	"encoding/json"
+	"testing"
+)
 
-type fakeCaller struct{ path string }
+type fakeCaller struct {
+	path string
+	req  interface{}
+}
 
-func (f *fakeCaller) Call(path string, req interface{}, result interface{}) error {
+func (f *fakeCaller) Call(
+	_ context.Context,
+	path string,
+	req interface{},
+	result interface{},
+) error {
 	f.path = path
-	return nil
+	f.req = req
+	return json.Unmarshal(
+		[]byte(`{"adminId":"admin","hospitalId":"hospital","supportStatus":1}`),
+		result,
+	)
 }
-func (f *fakeCaller) CallWithRelated(path string, req interface{}, result interface{}, relateOpenID string) error {
-	return f.Call(path, req, result)
+
+func (f *fakeCaller) CallWithRelated(
+	ctx context.Context,
+	path string,
+	req interface{},
+	result interface{},
+	_ string,
+) error {
+	return f.Call(ctx, path, req, result)
 }
-func TestPatientEndpoints(t *testing.T) {
-	f := &fakeCaller{}
-	_, _ = New(f).GetCitySupport(GetCitySupportRequest{})
-	if f.path != citySupportPath {
-		t.Fatalf("path=%q", f.path)
+
+func TestPatientRequestAndResponse(t *testing.T) {
+	caller := new(fakeCaller)
+	request := GetCitySupportRequest{
+		CityCode:   "440300",
+		PlatformID: "platform",
 	}
-	_, _ = New(f).SavePatientCard(SavePatientCardRequest{})
-	if f.path != savePatientPath {
-		t.Fatalf("path=%q", f.path)
+	got, err := New(caller).GetCitySupport(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if caller.path != citySupportPath || caller.req != request {
+		t.Fatalf("path=%q request=%+v", caller.path, caller.req)
+	}
+	if got.AdminID != "admin" || got.HospitalID != "hospital" || got.SupportStatus != 1 {
+		t.Fatalf("response=%+v", got)
 	}
 }
