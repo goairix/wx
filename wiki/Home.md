@@ -1175,32 +1175,76 @@ client, err := miniapp.NewClient(
 错误文本保持平台返回的原始内容，方便按官方或社区资料检索。`request_id` 只从响应头或平台的结构化
 响应字段读取，不会从 `errmsg` 文本中猜测。
 
-### 接入现有日志组件
+### 接入 zap.Logger
 
-应用已有日志库时，实现 `logging.Logger`，或使用 `logging.LoggerFunc` 适配：
+SDK 不直接依赖 zap。应用安装 zap 后，实现一个很薄的适配器即可：
+
+```bash
+go get go.uber.org/zap
+```
 
 ```go
-wxLogger := logging.LoggerFunc(func(
-	ctx context.Context,
+package wxadapter
+
+import (
+	"context"
+
+	"go.uber.org/zap"
+
+	"github.com/goairix/wx/v2/core/logging"
+)
+
+type ZapLogger struct {
+	Logger *zap.Logger
+}
+
+func (logger ZapLogger) Log(
+	_ context.Context,
 	level logging.Level,
 	event string,
 	attrs ...logging.Attr,
 ) {
-	fields := make(map[string]interface{}, len(attrs))
+	fields := make([]zap.Field, 0, len(attrs))
 	for _, attr := range attrs {
-		fields[attr.Key] = attr.Value
+		fields = append(fields, zap.Any(attr.Key, attr.Value))
 	}
-	appLogger.Log(ctx, level.String(), event, fields)
-})
 
-client, err := work.NewClient(config, work.WithLogger(wxLogger))
+	switch level {
+	case logging.LevelDebug:
+		logger.Logger.Debug(event, fields...)
+	case logging.LevelWarn:
+		logger.Logger.Warn(event, fields...)
+	case logging.LevelError:
+		logger.Logger.Error(event, fields...)
+	default:
+		logger.Logger.Info(event, fields...)
+	}
+}
 ```
 
-传给 Logger 的 context 与业务调用使用的是同一个 context，可以读取已有 trace ID 或业务 request ID。
-适配器应尽快返回，异步缓冲和丢弃策略由应用日志组件负责。
+在应用启动时创建一次 zap logger，并注入平台根客户端：
 
-直接使用 `core/transport.New` 时配置 `transport.WithLogger`。通过平台 `WithTransport` 注入自建
-transport 时，Logger 也在该 transport 上配置；平台的 `WithLogger` 只配置平台自己创建的 transport。
+```go
+zapLogger, err := zap.NewProduction()
+if err != nil {
+	return err
+}
+defer zapLogger.Sync()
+
+client, err := work.NewClient(
+	config,
+	work.WithLogger(wxadapter.ZapLogger{
+		Logger: zapLogger.Named("wx"),
+	}),
+)
+```
+
+zap 的日志级别仍由 zap 自己的 Core 配置控制。SDK 的 `wx.request.started` 和
+`wx.request.completed` 是 Debug；生产配置没有启用 Debug 时，只会输出重试和最终失败。适配器只处理
+SDK 已筛选过的结构化属性，不负责 OpenTelemetry 指标或 trace。
+
+传给 Logger 的 context 与业务调用使用的是同一个 context。如果应用需要从 context 提取业务字段，
+可以在自己的 `ZapLogger.Log` 中追加，但不要记录 access token、登录 code 或个人信息。
 
 ### Logger 与 Hook 的分工
 
@@ -1217,13 +1261,192 @@ hook := observability.HookFunc(func(event observability.Event) {
 
 client, err := official.NewClient(
 	config,
-	official.WithLogger(wxLogger),
+	official.WithLogger(zapAdapter),
 	official.WithHook(hook),
 )
 ```
 
-Logger 和 Hook 可以同时使用。Hook 的 request 事件只有平台与操作名；response 事件包含状态码、
-耗时、request ID 和错误。发生重试时，每次尝试都会产生一组 Hook 事件。
+Logger 和 Hook 可以同时使用。Hook 的 request 事件包含调用方 context、平台与操作名；response
+事件还包含状态码、耗时、request ID 和错误。发生重试时，每次尝试都会产生一组 Hook 事件。
+
+### 接入 OpenTelemetry 指标与 trace
+
+OpenTelemetry 通过 `core/observability.Hook` 接入，不经过 Logger，也不会输出 SDK 日志。应用先按
+[OpenTelemetry Go 官方文档](https://opentelemetry.io/docs/languages/go/getting-started/) 初始化
+`TracerProvider`、`MeterProvider` 和 exporter，再安装 API 包：
+
+```bash
+go get go.opentelemetry.io/otel
+```
+
+下面的 Hook 记录请求尝试次数、失败次数和耗时分布，并把每次 HTTP 尝试作为事件写入当前业务 span：
+
+```go
+package wxadapter
+
+import (
+	"context"
+	"fmt"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	oteltrace "go.opentelemetry.io/otel/trace"
+
+	"github.com/goairix/wx/v2/core/observability"
+)
+
+type OpenTelemetryHook struct {
+	attempts metric.Int64Counter
+	failures metric.Int64Counter
+	duration metric.Float64Histogram
+}
+
+func NewOpenTelemetryHook(meter metric.Meter) (*OpenTelemetryHook, error) {
+	attempts, err := meter.Int64Counter(
+		"wx.client.request.attempts",
+		metric.WithDescription("Number of SDK HTTP request attempts"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create wx attempt counter: %w", err)
+	}
+
+	failures, err := meter.Int64Counter(
+		"wx.client.request.failures",
+		metric.WithDescription("Number of failed SDK HTTP request attempts"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create wx failure counter: %w", err)
+	}
+
+	duration, err := meter.Float64Histogram(
+		"wx.client.request.duration",
+		metric.WithDescription("Duration of SDK HTTP request attempts"),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create wx duration histogram: %w", err)
+	}
+
+	return &OpenTelemetryHook{
+		attempts: attempts,
+		failures: failures,
+		duration: duration,
+	}, nil
+}
+
+func (hook *OpenTelemetryHook) OnRequest(event observability.Event) {
+	ctx := eventContext(event.Context)
+	attrs := requestAttributes(event)
+
+	hook.attempts.Add(ctx, 1, metric.WithAttributes(attrs...))
+	oteltrace.SpanFromContext(ctx).AddEvent(
+		"wx.request.attempt.started",
+		oteltrace.WithAttributes(attrs...),
+	)
+}
+
+func (hook *OpenTelemetryHook) OnResponse(event observability.Event) {
+	ctx := eventContext(event.Context)
+	metricAttrs := requestAttributes(event)
+	if event.StatusCode != 0 {
+		metricAttrs = append(
+			metricAttrs,
+			attribute.Int("http.response.status_code", event.StatusCode),
+		)
+	}
+
+	hook.duration.Record(
+		ctx,
+		event.Duration.Seconds(),
+		metric.WithAttributes(metricAttrs...),
+	)
+
+	eventName := "wx.request.attempt.completed"
+	traceAttrs := append([]attribute.KeyValue(nil), metricAttrs...)
+	if event.RequestID != "" {
+		traceAttrs = append(
+			traceAttrs,
+			attribute.String("wx.request_id", event.RequestID),
+		)
+	}
+	if event.Err != nil {
+		eventName = "wx.request.attempt.failed"
+		hook.failures.Add(
+			ctx,
+			1,
+			metric.WithAttributes(metricAttrs...),
+		)
+		traceAttrs = append(traceAttrs, attribute.Bool("error", true))
+	}
+
+	oteltrace.SpanFromContext(ctx).AddEvent(
+		eventName,
+		oteltrace.WithAttributes(traceAttrs...),
+	)
+}
+
+func requestAttributes(event observability.Event) []attribute.KeyValue {
+	attrs := make([]attribute.KeyValue, 0, 2)
+	if event.Platform != "" {
+		attrs = append(attrs, attribute.String("wx.platform", event.Platform))
+	}
+	if event.Operation != "" {
+		attrs = append(attrs, attribute.String("wx.operation", event.Operation))
+	}
+	return attrs
+}
+
+func eventContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+```
+
+创建 Hook 后通过平台客户端注入：
+
+```go
+meter := otel.Meter("example.com/service/wx")
+hook, err := wxadapter.NewOpenTelemetryHook(meter)
+if err != nil {
+	return err
+}
+
+client, err := official.NewClient(
+	config,
+	official.WithHook(hook),
+)
+```
+
+Hook 会把事件写入调用 SDK 时 context 中的当前 span，因此业务入口或 HTTP 服务需要先创建 span，
+并把派生的 context 传给 SDK：
+
+```go
+ctx, span := tracer.Start(ctx, "user.sync")
+defer span.End()
+
+profile, err := client.Users().Info(ctx, openID)
+```
+
+这些指标按每一次 HTTP 尝试统计；发生一次重试时，`attempts` 会增加两次，第一次失败也会计入
+`failures` 和 `duration`。示例只把 `platform`、`operation` 和 HTTP status 用作指标属性，不使用
+request ID、错误文本或用户标识，避免指标基数失控。request ID 只写入 trace 事件。
+
+Hook 无法判断某次失败是否随后重试成功，因此示例不会把当前业务 span 标记为 Error，也不会调用
+`RecordError` 写入原始错误文本。业务代码应根据 SDK 方法最终返回的 `err` 决定 span 状态。
+
+zap Logger 与 OpenTelemetry Hook 可以同时注入：
+
+```go
+client, err := miniapp.NewClient(
+	config,
+	miniapp.WithLogger(zapAdapter),
+	miniapp.WithHook(otelHook),
+)
+```
+
+日志由 zap 处理，指标和 trace 由 OpenTelemetry 处理，二者没有隐式依赖。
 
 ### 日志字段与数据安全
 
