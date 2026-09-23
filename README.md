@@ -1,10 +1,10 @@
-# wx
+# 微信公众账号SDK
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/goairix/wx/v2.svg)](https://pkg.go.dev/github.com/goairix/wx/v2)
 [![Go](https://img.shields.io/badge/Go-1.23%2B-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-`wx` 是面向 Go 服务端应用的微信生态 SDK，统一封装公众号、小程序、移动应用、
+微信公众账号SDK面向 Go 服务端应用，统一封装公众号、小程序、移动应用、
 微信开放平台、企业微信和腾讯电子健康卡 API。
 
 SDK 以平台根客户端为入口，按业务领域组织接口，并提供统一的上下文传递、凭据缓存、
