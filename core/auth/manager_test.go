@@ -92,7 +92,7 @@ func TestManagerSharesProviderFailureWithConcurrentCallers(t *testing.T) {
 		}()
 	}
 	close(start)
-	waitForParticipants(t, sharedCache, manager.cacheKey, callers)
+	waitForParticipants(t, sharedCache, manager.cacheKey, manager.coordinator, callers)
 	close(release)
 	group.Wait()
 	close(errorsByCaller)
@@ -133,7 +133,7 @@ func TestManagerWaiterCanCancelDuringRefresh(t *testing.T) {
 		_, err := manager.Token(waiterContext)
 		waiterDone <- err
 	}()
-	waitForParticipants(t, sharedCache, manager.cacheKey, 2)
+	waitForParticipants(t, sharedCache, manager.cacheKey, manager.coordinator, 2)
 	cancel()
 	select {
 	case err := <-waiterDone:
@@ -150,9 +150,15 @@ func TestManagerWaiterCanCancelDuringRefresh(t *testing.T) {
 	}
 }
 
-func waitForParticipants(t *testing.T, c cache.Cache, key string, want int) {
+func waitForParticipants(
+	t *testing.T,
+	c cache.Cache,
+	key string,
+	owner *refreshCoordinator,
+	want int,
+) {
 	t.Helper()
-	callKey := makeCacheLockKey(c, key)
+	callKey := makeCacheLockKey(c, key, owner)
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
 		refreshCalls.Lock()
@@ -194,6 +200,154 @@ func TestManagersWithAmbiguousComponentsDoNotShareCacheEntry(t *testing.T) {
 	if got := atomic.LoadInt32(&calls); got != 2 {
 		t.Fatalf("provider called %d times, want 2", got)
 	}
+}
+
+func TestManagersWithDifferentMapCachesDoNotShareRefresh(t *testing.T) {
+	firstCache := mapCache{}
+	secondCache := mapCache{}
+	assertIndependentRefreshes(t, firstCache, secondCache)
+}
+
+func TestManagersWithValueCachesDoNotShareRefresh(t *testing.T) {
+	firstCache := valueCache{id: "first"}
+	secondCache := valueCache{id: "second"}
+	assertIndependentRefreshes(t, firstCache, secondCache)
+}
+
+func TestManagersSharingMapCacheAndKeyShareRefresh(t *testing.T) {
+	sharedCache := mapCache{}
+	release := make(chan struct{})
+	var calls int32
+	provider := ProviderFunc(func(context.Context) (Credential, error) {
+		atomic.AddInt32(&calls, 1)
+		<-release
+		return Credential{
+			AccessToken: "shared-map-token",
+			ExpiresAt:   time.Now().Add(time.Hour),
+		}, nil
+	})
+	first := NewManager("work", "map-corp", sharedCache, provider)
+	second := NewManager("work", "map-corp", sharedCache, provider)
+	results := make(chan Credential, 2)
+	for _, manager := range []*Manager{first, second} {
+		manager := manager
+		go func() {
+			credential, _ := manager.Token(context.Background())
+			results <- credential
+		}()
+	}
+	waitForParticipants(t, sharedCache, first.cacheKey, first.coordinator, 2)
+	close(release)
+	for i := 0; i < 2; i++ {
+		credential := <-results
+		if credential.AccessToken != "shared-map-token" {
+			t.Fatalf("credential = %#v", credential)
+		}
+	}
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Fatalf("provider called %d times, want 1", got)
+	}
+}
+
+func assertIndependentRefreshes(t *testing.T, firstCache, secondCache cache.Cache) {
+	t.Helper()
+	started := make(chan string, 2)
+	release := make(chan struct{})
+	released := false
+	defer func() {
+		if !released {
+			close(release)
+		}
+	}()
+	provider := func(token string) Provider {
+		return ProviderFunc(func(context.Context) (Credential, error) {
+			started <- token
+			<-release
+			return Credential{
+				AccessToken: token,
+				ExpiresAt:   time.Now().Add(time.Hour),
+			}, nil
+		})
+	}
+	first := NewManager("work", "same-key", firstCache, provider("first-token"))
+	second := NewManager("work", "same-key", secondCache, provider("second-token"))
+	results := make(chan Credential, 2)
+	for _, manager := range []*Manager{first, second} {
+		manager := manager
+		go func() {
+			credential, _ := manager.Token(context.Background())
+			results <- credential
+		}()
+	}
+	for i := 0; i < 2; i++ {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("independent cache refresh was merged with another cache")
+		}
+	}
+	close(release)
+	released = true
+	tokens := make(map[string]bool)
+	for i := 0; i < 2; i++ {
+		tokens[(<-results).AccessToken] = true
+	}
+	if !tokens["first-token"] || !tokens["second-token"] {
+		t.Fatalf("independent credentials = %#v", tokens)
+	}
+}
+
+var mapCacheMutex sync.Mutex
+
+type mapCache map[string]string
+
+func (c mapCache) Get(ctx context.Context, key string) (string, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return "", false, err
+	}
+	mapCacheMutex.Lock()
+	defer mapCacheMutex.Unlock()
+	value, ok := c[key]
+	return value, ok, nil
+}
+
+func (c mapCache) Put(ctx context.Context, key, value string, ttl time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	mapCacheMutex.Lock()
+	c[key] = value
+	mapCacheMutex.Unlock()
+	return nil
+}
+
+func (c mapCache) Delete(ctx context.Context, key string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	mapCacheMutex.Lock()
+	delete(c, key)
+	mapCacheMutex.Unlock()
+	return nil
+}
+
+type valueCache struct {
+	id string
+}
+
+func (c valueCache) Get(ctx context.Context, key string) (string, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return "", false, err
+	}
+	return "", false, nil
+}
+
+func (c valueCache) Put(ctx context.Context, key, value string, ttl time.Duration) error {
+	return ctx.Err()
+}
+
+func (c valueCache) Delete(ctx context.Context, key string) error {
+	return ctx.Err()
 }
 
 func TestMemoryCacheExpiresEntries(t *testing.T) {

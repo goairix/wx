@@ -14,7 +14,12 @@ import (
 type cacheLockKey struct {
 	typeOf reflect.Type
 	ptr    uintptr
+	owner  *refreshCoordinator
 	key    string
+}
+
+type refreshCoordinator struct {
+	identity byte
 }
 
 type refreshCall struct {
@@ -32,8 +37,12 @@ var refreshCalls = struct {
 }
 
 // beginRefresh joins an existing refresh or creates a call for its leader.
-func beginRefresh(c cache.Cache, key string) (cacheLockKey, *refreshCall, bool) {
-	callKey := makeCacheLockKey(c, key)
+func beginRefresh(
+	c cache.Cache,
+	key string,
+	owner *refreshCoordinator,
+) (cacheLockKey, *refreshCall, bool) {
+	callKey := makeCacheLockKey(c, key, owner)
 	refreshCalls.Lock()
 	defer refreshCalls.Unlock()
 
@@ -75,7 +84,11 @@ func waitRefresh(ctx context.Context, call *refreshCall) (Credential, error) {
 	}
 }
 
-func makeCacheLockKey(c cache.Cache, key string) cacheLockKey {
+func makeCacheLockKey(
+	c cache.Cache,
+	key string,
+	owner *refreshCoordinator,
+) cacheLockKey {
 	typeOf := reflect.TypeOf(c)
 	result := cacheLockKey{
 		typeOf: typeOf,
@@ -85,8 +98,16 @@ func makeCacheLockKey(c cache.Cache, key string) cacheLockKey {
 		return result
 	}
 	value := reflect.ValueOf(c)
-	if value.Kind() == reflect.Ptr {
+	switch value.Kind() {
+	case reflect.Ptr, reflect.Map, reflect.Chan, reflect.Slice, reflect.UnsafePointer:
 		result.ptr = value.Pointer()
+		if result.ptr == 0 {
+			result.owner = owner
+		}
+	default:
+		// Value caches have no stable runtime identity. Keep coordination private
+		// to their Manager rather than merging independent values by type.
+		result.owner = owner
 	}
 	return result
 }

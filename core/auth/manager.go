@@ -21,11 +21,12 @@ type Credential struct {
 
 // Manager caches a credential and coordinates refreshes for one cache key.
 type Manager struct {
-	platform string
-	key      string
-	cacheKey string
-	cache    cache.Cache
-	provider Provider
+	platform    string
+	key         string
+	cacheKey    string
+	cache       cache.Cache
+	provider    Provider
+	coordinator *refreshCoordinator
 }
 
 // NewManager creates a credential manager for platform and key. A nil cache is
@@ -35,11 +36,12 @@ func NewManager(platform, key string, c Cache, provider Provider) *Manager {
 		c = cache.NewMemory()
 	}
 	return &Manager{
-		platform: platform,
-		key:      key,
-		cacheKey: makeCredentialCacheKey(platform, key),
-		cache:    c,
-		provider: provider,
+		platform:    platform,
+		key:         key,
+		cacheKey:    makeCredentialCacheKey(platform, key),
+		cache:       c,
+		provider:    provider,
+		coordinator: &refreshCoordinator{},
 	}
 }
 
@@ -71,7 +73,7 @@ func (m *Manager) Token(ctx context.Context) (Credential, error) {
 		return credential, err
 	}
 
-	callKey, call, leader := beginRefresh(m.cache, m.cacheKey)
+	callKey, call, leader := beginRefresh(m.cache, m.cacheKey, m.coordinator)
 	if !leader {
 		return waitRefresh(ctx, call)
 	}
