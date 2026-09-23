@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -295,10 +296,7 @@ func TestOpenPlatformErrorIncludesTransportMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := client.Component().SetVerifyTicket(
-		context.Background(),
-		"ticket-1",
-	); err != nil {
+	if err := client.Component().SetVerifyTicket(context.Background(), "ticket-1"); err != nil {
 		t.Fatal(err)
 	}
 	_, err = client.Templates().Drafts(context.Background())
@@ -314,10 +312,7 @@ func TestOpenPlatformErrorIncludesTransportMetadata(t *testing.T) {
 }
 
 func TestAuthorizedFactoriesInheritTransportCacheAndHook(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(
-		writer http.ResponseWriter,
-		request *http.Request,
-	) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		switch request.URL.Path {
 		case "/cgi-bin/component/api_component_token":
@@ -389,10 +384,7 @@ func TestAuthorizedFactoriesInheritTransportCacheAndHook(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	officialClient, err := client.AuthorizedOfficial(
-		"official-app",
-		"official-refresh-secret",
-	)
+	officialClient, err := client.AuthorizedOfficial("official-app", "official-refresh-secret")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,18 +392,11 @@ func TestAuthorizedFactoriesInheritTransportCacheAndHook(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	miniappClient, err := client.AuthorizedMiniApp(
-		"miniapp-app",
-		"miniapp-refresh-secret",
-	)
+	miniappClient, err := client.AuthorizedMiniApp("miniapp-app", "miniapp-refresh-secret")
 	if err != nil {
 		t.Fatal(err)
 	}
-	phone, err := miniappClient.Users().GetPhoneNumber(
-		ctx,
-		"phone-code",
-		"openid-1",
-	)
+	phone, err := miniappClient.Users().GetPhoneNumber(ctx, "phone-code", "openid-1")
 	if err != nil || phone.PhoneNumber != "13800000000" {
 		t.Fatalf("phone = %#v, err = %v", phone, err)
 	}
@@ -427,6 +412,211 @@ func TestAuthorizedFactoriesInheritTransportCacheAndHook(t *testing.T) {
 	}
 
 	assertFactoryCredentialKeys(t, store.snapshot())
+}
+
+func TestAuthorizedEntriesShareOneConcurrentCredentialRefresh(t *testing.T) {
+	var authorizerRefreshes int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/cgi-bin/component/api_component_token":
+			writeJSON(writer, map[string]interface{}{
+				"component_access_token": "component-token",
+				"expires_in":             7200,
+			})
+		case "/cgi-bin/component/api_authorizer_token":
+			atomic.AddInt32(&authorizerRefreshes, 1)
+			time.Sleep(20 * time.Millisecond)
+			writeJSON(writer, map[string]interface{}{
+				"authorizer_access_token": "shared-access-token",
+				"expires_in":              7200,
+			})
+		case "/wxa/release":
+			assertAccessToken(t, request, "shared-access-token")
+			writeJSON(writer, map[string]interface{}{"errcode": 0})
+		case "/cgi-bin/user/info":
+			assertAccessToken(t, request, "shared-access-token")
+			writeJSON(writer, map[string]interface{}{"openid": "openid-1"})
+		case "/wxa/business/getuserphonenumber":
+			assertAccessToken(t, request, "shared-access-token")
+			writeJSON(writer, map[string]interface{}{
+				"phone_info": map[string]interface{}{
+					"phoneNumber": "13800000000",
+				},
+			})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	store := newTrackingCache()
+	client, err := NewClient(
+		Config{AppID: "component-app", AppSecret: "component-secret"},
+		WithHTTPClient(server.Client()),
+		WithBaseURL(server.URL),
+		WithCache(store),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := client.Component().SetVerifyTicket(ctx, "ticket-1"); err != nil {
+		t.Fatal(err)
+	}
+	officialClient, err := client.AuthorizedOfficial("shared-app", "shared-refresh-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	miniappClient, err := client.AuthorizedMiniApp("shared-app", "shared-refresh-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start := make(chan struct{})
+	errors := make(chan error, 3)
+	go func() {
+		<-start
+		errors <- client.Code().ForAuthorizer("shared-app", "shared-refresh-token").Release(ctx)
+	}()
+	go func() {
+		<-start
+		_, requestErr := officialClient.Users().Info(ctx, "openid-1")
+		errors <- requestErr
+	}()
+	go func() {
+		<-start
+		_, requestErr := miniappClient.Users().GetPhoneNumber(ctx, "code-1", "openid-1")
+		errors <- requestErr
+	}()
+	close(start)
+	for index := 0; index < 3; index++ {
+		if requestErr := <-errors; requestErr != nil {
+			t.Fatal(requestErr)
+		}
+	}
+
+	if got := atomic.LoadInt32(&authorizerRefreshes); got != 1 {
+		t.Fatalf("authorizer refreshes = %d, want 1", got)
+	}
+	credentialKeys := keysContainingValue(store.snapshot(), "shared-access-token")
+	if len(credentialKeys) != 1 {
+		t.Fatalf("shared credential cache keys = %v, want one", credentialKeys)
+	}
+	if strings.Contains(credentialKeys[0], "shared-refresh-token") {
+		t.Fatalf("credential key contains refresh token: %q", credentialKeys[0])
+	}
+}
+
+func TestAuthorizerRefreshTokenRotationIsReusedAndPersisted(t *testing.T) {
+	var requestMu sync.Mutex
+	var usedRefreshTokens []string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/cgi-bin/component/api_component_token":
+			writeJSON(writer, map[string]interface{}{
+				"component_access_token": "component-token",
+				"expires_in":             7200,
+			})
+		case "/cgi-bin/component/api_authorizer_token":
+			var body struct {
+				RefreshToken string `json:"authorizer_refresh_token"`
+			}
+			if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+				t.Errorf("decode authorizer request: %v", err)
+				writer.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			requestMu.Lock()
+			usedRefreshTokens = append(usedRefreshTokens, body.RefreshToken)
+			attempt := len(usedRefreshTokens)
+			requestMu.Unlock()
+			response := map[string]interface{}{
+				"authorizer_access_token": "access-token-2",
+				"expires_in":              7200,
+			}
+			if attempt == 1 {
+				response["authorizer_access_token"] = "access-token-1"
+				response["authorizer_refresh_token"] = "rotated-refresh-token"
+			}
+			writeJSON(writer, response)
+		case "/wxa/release":
+			writeJSON(writer, map[string]interface{}{"errcode": 0})
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	store := newTrackingCache()
+	var callbackMu sync.Mutex
+	var callbackAppID string
+	var callbackToken string
+	var callbackCalls int
+	refreshStore := RefreshTokenStoreFunc(func(
+		_ context.Context,
+		authorizerAppID string,
+		refreshToken string,
+	) error {
+		callbackMu.Lock()
+		defer callbackMu.Unlock()
+		callbackCalls++
+		callbackAppID = authorizerAppID
+		callbackToken = refreshToken
+		return nil
+	})
+	client, err := NewClient(
+		Config{AppID: "component-app", AppSecret: "component-secret"},
+		WithHTTPClient(server.Client()),
+		WithBaseURL(server.URL),
+		WithCache(store),
+		WithRefreshTokenStore(refreshStore),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := client.Component().SetVerifyTicket(ctx, "ticket-1"); err != nil {
+		t.Fatal(err)
+	}
+	authorizedCode := client.Code().ForAuthorizer("authorizer-app", "initial-refresh-token")
+	if err := authorizedCode.Release(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	credentialKeys := keysContainingValue(store.snapshot(), "access-token-1")
+	if len(credentialKeys) != 1 {
+		t.Fatalf("first credential cache keys = %v", credentialKeys)
+	}
+	if err := store.Delete(ctx, credentialKeys[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := authorizedCode.Release(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	requestMu.Lock()
+	gotRefreshTokens := append([]string(nil), usedRefreshTokens...)
+	requestMu.Unlock()
+	wantRefreshTokens := []string{"initial-refresh-token", "rotated-refresh-token"}
+	if len(gotRefreshTokens) != len(wantRefreshTokens) ||
+		gotRefreshTokens[0] != wantRefreshTokens[0] ||
+		gotRefreshTokens[1] != wantRefreshTokens[1] {
+		t.Fatalf("refresh token requests = %v, want %v", gotRefreshTokens, wantRefreshTokens)
+	}
+	callbackMu.Lock()
+	defer callbackMu.Unlock()
+	if callbackCalls != 1 ||
+		callbackAppID != "authorizer-app" ||
+		callbackToken != "rotated-refresh-token" {
+		t.Fatalf(
+			"refresh callback = calls:%d app:%q token:%q",
+			callbackCalls,
+			callbackAppID,
+			callbackToken,
+		)
+	}
 }
 
 func TestAcceptVerifyTicketFailsClosed(t *testing.T) {
@@ -572,6 +762,23 @@ func containsOperation(operations []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func assertAccessToken(t *testing.T, request *http.Request, want string) {
+	t.Helper()
+	if got := request.URL.Query().Get("access_token"); got != want {
+		t.Errorf("access token = %q, want %q", got, want)
+	}
+}
+
+func keysContainingValue(entries map[string]string, value string) []string {
+	var keys []string
+	for key, entry := range entries {
+		if strings.Contains(entry, value) {
+			keys = append(keys, key)
+		}
+	}
+	return keys
 }
 
 func writeJSON(writer http.ResponseWriter, value interface{}) {
