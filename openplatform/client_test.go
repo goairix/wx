@@ -370,6 +370,30 @@ func assertRequestContracts(t *testing.T, requests []recordedRequest) {
 		!strings.Contains(release.query, "access_token=authorizer-token") {
 		t.Fatalf("release request = %#v", release)
 	}
+	authorizerToken := byPath["/cgi-bin/component/api_authorizer_token"]
+	if authorizerToken.method != http.MethodPost ||
+		!strings.Contains(
+			authorizerToken.query,
+			"component_access_token=component-token",
+		) ||
+		authorizerToken.body["authorizer_appid"] != "miniapp-app" ||
+		authorizerToken.body["authorizer_refresh_token"] != "miniapp-refresh-token" {
+		t.Fatalf("authorizer token request = %#v", authorizerToken)
+	}
+	officialUser := byPath["/cgi-bin/user/info"]
+	if !strings.Contains(
+		officialUser.query,
+		"access_token=authorizer-token",
+	) {
+		t.Fatalf("authorized official request = %#v", officialUser)
+	}
+	miniappPhone := byPath["/wxa/business/getuserphonenumber"]
+	if !strings.Contains(
+		miniappPhone.query,
+		"access_token=authorizer-token",
+	) {
+		t.Fatalf("authorized miniapp request = %#v", miniappPhone)
+	}
 	work := byPath["/cgi-bin/service/get_permanent_code"]
 	if !strings.Contains(work.query, "suite_access_token=suite-token") ||
 		work.body["auth_code"] != "temporary-code" {
