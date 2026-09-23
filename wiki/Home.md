@@ -5,7 +5,7 @@
 
 ## 目录
 
-- [SDK 能力概览](#sdk-能力概览)
+- [核心能力](#核心能力)
 - [整体架构](#整体架构)
 - [请求执行链路](#请求执行链路)
 - [开始使用](#开始使用)
@@ -29,21 +29,143 @@
 - [常见问题](#常见问题)
 - [API 索引](#api-索引)
 
-## SDK 能力概览
+## 核心能力
 
-`wx` 将不同平台的身份配置和业务 API 保留在各自的平台包中，同时复用一致的请求、凭据、
-错误、观测和回调基础设施。业务代码只需要创建目标平台客户端，再从客户端进入对应领域模块。
+`wx` 的核心能力通过平台客户端统一组装。一般业务代码不需要直接创建 `core/transport.Client`
+或 `core/auth.Manager`，只需要在构造公众号、小程序、企业微信等平台客户端时注入需要的能力。
 
-| 能力 | SDK 默认行为 | 使用者需要关注 |
-| --- | --- | --- |
-| 多平台接入 | 六个平台使用独立根客户端和类型化领域 API | 只引入目标平台包并配置该平台身份 |
-| Context | 所有网络方法接收 `context.Context` | 在业务入口设置超时并沿调用链传递 |
-| 凭据管理 | 自动获取、缓存、提前刷新并协调并发刷新 | 多实例部署时注入共享缓存或外部 Provider |
-| HTTP 与重试 | 统一编码请求、发送、读取响应并按策略重试 | 按运行环境注入 HTTP Client、代理或重试策略 |
-| 错误处理 | 返回支持 `errors.Is` 和 `errors.As` 的结构化错误 | 区分平台错误、网络错误和 context 错误 |
-| 请求观测 | 通过 Hook 暴露操作名、耗时、状态和 request ID | 将事件接入日志、指标或链路追踪 |
-| 回调处理 | 完成 URL 验证、签名校验、解密、事件解析和响应封装 | 业务 handler 只处理类型化事件 |
-| 测试支持 | 允许替换 HTTP Client、Base URL、缓存和凭据 | 使用本地服务和固定依赖测试业务逻辑 |
+### 默认配置能做什么
+
+只提供平台 `Config` 就可以调用 API：
+
+```go
+client, err := official.NewClient(official.Config{
+	AppID:     appID,
+	AppSecret: appSecret,
+})
+if err != nil {
+	return err
+}
+
+ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+defer cancel()
+
+profile, err := client.Users().Info(ctx, openID)
+```
+
+这个客户端已经包含以下基础能力：
+
+- 使用超时为 30 秒的默认 HTTP Client。
+- 使用进程内存缓存保存服务端凭据。
+- 在首次需要时获取凭据，在过期前自动刷新，并合并同一进程内的并发刷新。
+- 将 HTTP 错误和平台业务错误转换为结构化错误。
+- 将调用结果解码到对应平台的响应类型。
+- 默认只尝试一次请求，不输出日志，也不依赖任何日志框架。
+
+单实例服务、命令行工具和本地开发可以从默认配置开始。多实例服务通常需要注入共享缓存；
+有统一网络出口、可靠性或监控要求时，再注入 HTTP Client、重试策略和观测 Hook。
+
+### 生产环境组合示例
+
+下面的示例集中展示核心能力如何接入公众号客户端。其他平台使用同样的 Option 模式；电子健康卡的
+重试入口名为 `healthcard.WithRetry`，其余平台使用 `WithRetryPolicy`。
+
+```go
+import (
+	"log"
+	"net/http"
+	"time"
+
+	corecache "github.com/goairix/wx/v2/core/cache"
+	"github.com/goairix/wx/v2/core/observability"
+	"github.com/goairix/wx/v2/core/transport"
+	"github.com/goairix/wx/v2/official"
+)
+
+func newOfficialClient(
+	appID string,
+	appSecret string,
+	sharedCache corecache.Cache,
+) (*official.Client, error) {
+	httpClient := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	retryPolicy := transport.RetryPolicy{
+		MaxAttempts: 3,
+		Backoff: func(attempt int) time.Duration {
+			return time.Duration(attempt) * 200 * time.Millisecond
+		},
+		RetryStatus: map[int]bool{
+			http.StatusTooManyRequests:     true,
+			http.StatusBadGateway:          true,
+			http.StatusServiceUnavailable: true,
+			http.StatusGatewayTimeout:      true,
+		},
+	}
+
+	hook := observability.HookFunc(func(event observability.Event) {
+		log.Printf(
+			"platform=%s operation=%s status=%d duration=%s request_id=%s err=%v",
+			event.Platform,
+			event.Operation,
+			event.StatusCode,
+			event.Duration,
+			event.RequestID,
+			event.Err,
+		)
+	})
+
+	return official.NewClient(
+		official.Config{
+			AppID:     appID,
+			AppSecret: appSecret,
+		},
+		official.WithHTTPClient(httpClient),
+		official.WithCache(sharedCache),
+		official.WithRetryPolicy(retryPolicy),
+		official.WithHook(hook),
+	)
+}
+```
+
+`sharedCache` 需要实现 `core/cache.Cache`，通常由 Redis、数据库或内部缓存服务适配器提供。
+业务入口仍然只调用领域方法并传入 context，缓存、重试和观测逻辑不需要散落在业务代码里。
+
+### core 包与使用入口
+
+| 核心包 | 解决的问题 | 通常如何使用 | 什么时候需要直接配置 |
+| --- | --- | --- | --- |
+| `core/auth` | 获取、缓存、提前刷新凭据并协调并发刷新 | 平台客户端自动创建凭据管理器 | 公众号、小程序或健康卡凭据由统一服务托管时，注入 `auth.Provider` 或 `auth.Manager` |
+| `core/cache` | 为凭据和 ticket 提供带 TTL 的缓存 | 默认使用 `cache.NewMemory()` | 多实例、跨重启或集中管理凭据时，通过平台 `WithCache` 注入共享实现 |
+| `core/request` | 描述平台无关的请求、重试模式和响应元数据 | 由领域模块构造，业务代码通常不直接使用 | 调用尚未封装的接口或开发新的领域模块时使用 |
+| `core/transport` | 处理 HTTP、响应限制、重试和错误解析 | 通过平台的 `WithHTTPClient`、`WithRetryPolicy`、`WithBaseURL` 配置 | 需要代理、网关、连接池、自定义超时或复用 Transport 时配置 |
+| `core/errors` | 保存平台、操作名、状态码、错误码和 request ID | 对领域方法返回的错误使用标准库 `errors.Is`、`errors.As` | 需要按平台错误码分支或记录排障字段时使用 |
+| `core/observability` | 为每次 HTTP 尝试产生请求和响应事件 | 创建 `observability.Hook`，通过平台 `WithHook` 注入 | 需要日志、指标、trace 或统计重试次数时配置 |
+| `core/webhook` | 签名校验、AES 解密、消息解析和响应封装 | 从平台客户端调用 `client.Webhook().Handler(...)` | 需要注册回调或自定义错误响应时使用 |
+| `core/random` | 生成密码学安全的随机字符串 | JS SDK 签名和加密回调 nonce 由 SDK 内部生成 | 业务需要同类随机标识时可调用 `random.String` |
+
+### 按场景选择配置
+
+- **只调用一个平台 API**：创建平台客户端，直接调用领域方法，不需要手动组装 core。
+- **服务部署多个实例**：实现 `core/cache.Cache`，通过 `WithCache` 注入共享缓存。
+- **凭据由内部服务统一发放**：公众号、小程序和健康卡可以实现 `core/auth.Provider`，通过平台的凭据 Option 注入。
+- **需要代理或统一网关**：注入自定义 `http.Client`；只有测试或网关场景才覆盖 Base URL。
+- **需要自动重试**：配置 `transport.RetryPolicy`，并确认目标操作允许安全重复执行。
+- **需要日志、指标或 tracing**：实现 `observability.Hook`，通过 `WithHook` 注入。
+- **需要接收平台回调**：在平台 `Config` 中设置回调参数，再注册 `client.Webhook().Handler(...)`。
+- **需要测试业务代码**：替换 Base URL、HTTP Client、缓存或凭据 Provider，不访问真实平台。
+
+### 详细用法索引
+
+- 调用超时、主动取消和 context 传递：[Context 与超时](#context-与超时)
+- HTTP 超时、代理、连接池和 API 网关：[HTTP 客户端与代理](#http-客户端与代理)
+- 内存缓存、共享缓存和外部凭据服务：[凭据与缓存](#凭据与缓存)
+- 重试次数、退避策略和幂等边界：[重试策略](#重试策略)
+- 平台错误码、request ID 和错误链：[错误处理](#错误处理)
+- 日志、指标与 tracing 接入：[请求观测](#请求观测)
+- URL 验证、消息解密和事件处理：[回调处理](#回调处理)
+- Base URL、固定依赖和本地服务测试：[测试](#测试)
 
 ## 整体架构
 
@@ -60,7 +182,7 @@ flowchart TB
 
     Client --- Platforms[official / miniapp / mobileapp / openplatform / work / healthcard]
     Domain --- Domains[用户 / 菜单 / 消息 / OAuth / 通讯录 / 客户联系 / 健康卡]
-    Core --- Capabilities[auth / cache / request / transport / errors / observability / webhook]
+    Core --- Capabilities[auth / cache / request / transport / errors / observability / webhook / random]
 ```
 
 - **平台根客户端**：保存平台身份、HTTP Client、缓存、重试策略和观测 Hook，并为领域模块共享这些依赖。
@@ -1269,6 +1391,7 @@ POST 默认不重试，以避免重复发送消息、重复创建资源或重复
 - [core/cache](https://pkg.go.dev/github.com/goairix/wx/v2/core/cache)：缓存接口与内存实现
 - [core/errors](https://pkg.go.dev/github.com/goairix/wx/v2/core/errors)：结构化错误与错误链
 - [core/observability](https://pkg.go.dev/github.com/goairix/wx/v2/core/observability)：请求观测 hook
+- [core/random](https://pkg.go.dev/github.com/goairix/wx/v2/core/random)：安全随机字符串
 - [core/request](https://pkg.go.dev/github.com/goairix/wx/v2/core/request)：平台无关请求模型
 - [core/transport](https://pkg.go.dev/github.com/goairix/wx/v2/core/transport)：HTTP、重试和响应处理
 - [core/webhook](https://pkg.go.dev/github.com/goairix/wx/v2/core/webhook)：回调协议与 HTTP 适配
