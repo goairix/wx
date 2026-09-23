@@ -2,14 +2,28 @@ package work
 
 import (
 	"net/http"
+	"time"
 
 	corecache "github.com/goairix/wx/v2/core/cache"
 	"github.com/goairix/wx/v2/core/observability"
 	"github.com/goairix/wx/v2/core/transport"
 	"github.com/goairix/wx/v2/kernel/contracts"
-	"github.com/goairix/wx/v2/support/cache"
-	"github.com/goairix/wx/v2/support/lock"
 )
+
+// LegacyCache is retained for the v1-compatible constructor during migration.
+type LegacyCache interface {
+	IsExist(key string) bool
+	Get(key string) (string, error)
+	Put(key string, value string, expiration time.Duration) error
+	Delete(key string) error
+	ClearAll() error
+}
+
+// LegacyLocker is retained for the v1-compatible constructor during migration.
+type LegacyLocker interface {
+	Lock()
+	Unlock()
+}
 
 type config struct {
 	corpId                 string
@@ -21,9 +35,9 @@ type config struct {
 }
 
 type option struct {
-	cache               cache.Cache
+	cache               LegacyCache
 	cacheKeyPrefix      string
-	locker              lock.Locker
+	locker              LegacyLocker
 	accessTokenProvider contracts.AccessTokenProvider
 	coreCache           corecache.Cache
 	baseURL             string
@@ -71,7 +85,7 @@ func WithHook(value observability.Hook) Option {
 type Option func(*option)
 
 // WithCache 设置缓存
-func WithCache(cache cache.Cache) Option {
+func WithCache(cache LegacyCache) Option {
 	return func(o *option) {
 		o.cache = cache
 	}
@@ -85,7 +99,7 @@ func WithCacheKeyPrefix(cacheKeyPrefix string) Option {
 }
 
 // WithLocker 设置锁
-func WithLocker(locker lock.Locker) Option {
+func WithLocker(locker LegacyLocker) Option {
 	return func(o *option) {
 		o.locker = locker
 	}
