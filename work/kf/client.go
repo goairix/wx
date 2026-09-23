@@ -56,6 +56,31 @@ func (c *Client) ListAccounts(ctx context.Context, offset, limit int) (*AccountL
 	return result, err
 }
 
+func (c *Client) AccountContactWay(
+	ctx context.Context,
+	openKFID string,
+	scene string,
+) (string, error) {
+	body := struct {
+		OpenKFID string `json:"open_kfid"`
+		Scene    string `json:"scene,omitempty"`
+	}{
+		OpenKFID: openKFID,
+		Scene:    scene,
+	}
+	var result struct {
+		URL string `json:"url"`
+	}
+	err := c.api.Post(
+		ctx,
+		"work.kf.account.contact_way",
+		"cgi-bin/kf/add_contact_way",
+		body,
+		&result,
+	)
+	return result.URL, err
+}
+
 func (c *Client) AddServicers(
 	ctx context.Context,
 	openKFID string,

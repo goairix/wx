@@ -3,7 +3,6 @@ package customer
 import (
 	"context"
 	"net/url"
-	"strconv"
 
 	"github.com/goairix/wx/v2/work/internal/api"
 )
@@ -108,6 +107,45 @@ func (c *ContactClient) BatchGet(
 	return result, err
 }
 
+func (c *ContactClient) UnionIDToExternalUserID(
+	ctx context.Context,
+	input UnionidToExternalUseridRequest,
+) ([]ExternalUseridInfo, error) {
+	var result struct {
+		Items []ExternalUseridInfo `json:"external_userid_info"`
+	}
+	err := c.api.Post(
+		ctx,
+		"work.customer.contact.unionid_to_external_userid",
+		"cgi-bin/externalcontact/unionid_to_external_userid",
+		input,
+		&result,
+	)
+	return result.Items, err
+}
+
+func (c *ContactClient) ToServiceExternalUserID(
+	ctx context.Context,
+	externalUserID string,
+) (string, error) {
+	body := struct {
+		ExternalUserID string `json:"external_userid"`
+	}{
+		ExternalUserID: externalUserID,
+	}
+	var result struct {
+		ExternalUserID string `json:"external_userid"`
+	}
+	err := c.api.Post(
+		ctx,
+		"work.customer.contact.to_service_external_userid",
+		"cgi-bin/externalcontact/to_service_external_userid",
+		body,
+		&result,
+	)
+	return result.ExternalUserID, err
+}
+
 func (c *TagClient) List(ctx context.Context, input GetCorpTagListRequest) ([]TagGroup, error) {
 	var result struct {
 		Groups []TagGroup `json:"tag_group"`
@@ -156,6 +194,16 @@ func (c *TagClient) Delete(ctx context.Context, input DelCorpTagRequest) error {
 	)
 }
 
+func (c *TagClient) Mark(ctx context.Context, input MarkTagRequest) error {
+	return c.api.Post(
+		ctx,
+		"work.customer.tag.mark",
+		"cgi-bin/externalcontact/mark_tag",
+		input,
+		nil,
+	)
+}
+
 func (c *StrategyClient) List(
 	ctx context.Context,
 	cursor string,
@@ -180,15 +228,17 @@ func (c *StrategyClient) List(
 }
 
 func (c *StrategyClient) Get(ctx context.Context, strategyID int) (*StrategyInfo, error) {
-	result := new(StrategyInfo)
+	var result struct {
+		Strategy StrategyInfo `json:"strategy"`
+	}
 	err := c.api.Post(
 		ctx,
 		"work.customer.strategy.get",
 		"cgi-bin/externalcontact/customer_strategy/get",
 		map[string]int{"strategy_id": strategyID},
-		result,
+		&result,
 	)
-	return result, err
+	return &result.Strategy, err
 }
 
 func (c *StrategyClient) Create(ctx context.Context, input CreateStrategyRequest) (int, error) {
@@ -203,6 +253,46 @@ func (c *StrategyClient) Create(ctx context.Context, input CreateStrategyRequest
 		&result,
 	)
 	return result.ID, err
+}
+
+func (c *StrategyClient) Range(
+	ctx context.Context,
+	input StrategyGetRangeRequest,
+) (*StrategyGetRangeResult, error) {
+	result := new(StrategyGetRangeResult)
+	err := c.api.Post(
+		ctx,
+		"work.customer.strategy.range",
+		"cgi-bin/externalcontact/customer_strategy/get_range",
+		input,
+		result,
+	)
+	return result, err
+}
+
+func (c *StrategyClient) Update(ctx context.Context, input EditStrategyRequest) error {
+	return c.api.Post(
+		ctx,
+		"work.customer.strategy.update",
+		"cgi-bin/externalcontact/customer_strategy/edit",
+		input,
+		nil,
+	)
+}
+
+func (c *StrategyClient) Delete(ctx context.Context, strategyID int) error {
+	body := struct {
+		StrategyID int `json:"strategy_id"`
+	}{
+		StrategyID: strategyID,
+	}
+	return c.api.Post(
+		ctx,
+		"work.customer.strategy.delete",
+		"cgi-bin/externalcontact/customer_strategy/del",
+		body,
+		nil,
+	)
 }
 
 func (c *GroupChatClient) List(
@@ -224,15 +314,17 @@ func (c *GroupChatClient) Get(
 	ctx context.Context,
 	input GroupChatGetRequest,
 ) (*GroupChatDetail, error) {
-	result := new(GroupChatDetail)
+	var result struct {
+		GroupChat GroupChatDetail `json:"group_chat"`
+	}
 	err := c.api.Post(
 		ctx,
 		"work.customer.group_chat.get",
 		"cgi-bin/externalcontact/groupchat/get",
 		input,
-		result,
+		&result,
 	)
-	return result, err
+	return &result.GroupChat, err
 }
 
 func (c *GroupChatClient) DeleteJoinWay(ctx context.Context, configID string) error {
@@ -241,6 +333,58 @@ func (c *GroupChatClient) DeleteJoinWay(ctx context.Context, configID string) er
 		"work.customer.group_chat.delete_join_way",
 		"cgi-bin/externalcontact/groupchat/del_join_way",
 		map[string]string{"config_id": configID},
+		nil,
+	)
+}
+
+func (c *GroupChatClient) AddJoinWay(
+	ctx context.Context,
+	input GroupChatJoinWayRequest,
+) (string, error) {
+	var result struct {
+		ConfigID string `json:"config_id"`
+	}
+	err := c.api.Post(
+		ctx,
+		"work.customer.group_chat.add_join_way",
+		"cgi-bin/externalcontact/groupchat/add_join_way",
+		input,
+		&result,
+	)
+	return result.ConfigID, err
+}
+
+func (c *GroupChatClient) JoinWay(
+	ctx context.Context,
+	configID string,
+) (*GroupChatJoinWay, error) {
+	body := struct {
+		ConfigID string `json:"config_id"`
+	}{
+		ConfigID: configID,
+	}
+	var result struct {
+		JoinWay GroupChatJoinWay `json:"join_way"`
+	}
+	err := c.api.Post(
+		ctx,
+		"work.customer.group_chat.join_way",
+		"cgi-bin/externalcontact/groupchat/get_join_way",
+		body,
+		&result,
+	)
+	return &result.JoinWay, err
+}
+
+func (c *GroupChatClient) UpdateJoinWay(
+	ctx context.Context,
+	input GroupChatJoinWayUpdateRequest,
+) error {
+	return c.api.Post(
+		ctx,
+		"work.customer.group_chat.update_join_way",
+		"cgi-bin/externalcontact/groupchat/update_join_way",
+		input,
 		nil,
 	)
 }
@@ -257,8 +401,4 @@ func (c *GroupChatClient) OpenGIDToChatID(ctx context.Context, openGID string) (
 		&result,
 	)
 	return result.ChatID, err
-}
-
-func strategyIDQuery(strategyID int) url.Values {
-	return url.Values{"strategy_id": []string{strconv.Itoa(strategyID)}}
 }

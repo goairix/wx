@@ -98,6 +98,147 @@ func (c *UserClient) BatchDelete(ctx context.Context, userIDs []string) error {
 	return c.api.Post(ctx, "work.contact.user.batch_delete", "cgi-bin/user/batchdelete", body, nil)
 }
 
+func (c *UserClient) SimpleList(
+	ctx context.Context,
+	departmentID int,
+) ([]SimpleUser, error) {
+	var result simpleUserListResult
+	err := c.api.Get(
+		ctx,
+		"work.contact.user.simple_list",
+		"cgi-bin/user/simplelist",
+		url.Values{"department_id": []string{strconv.Itoa(departmentID)}},
+		&result,
+	)
+	return result.UserList, err
+}
+
+func (c *UserClient) DetailList(
+	ctx context.Context,
+	departmentID int,
+) ([]UserInfo, error) {
+	var result userDetailListResult
+	err := c.api.Get(
+		ctx,
+		"work.contact.user.detail_list",
+		"cgi-bin/user/list",
+		url.Values{"department_id": []string{strconv.Itoa(departmentID)}},
+		&result,
+	)
+	return result.UserList, err
+}
+
+func (c *UserClient) OpenID(ctx context.Context, userID string) (string, error) {
+	body := struct {
+		UserID string `json:"userid"`
+	}{
+		UserID: userID,
+	}
+	var result convertToOpenidResult
+	err := c.api.Post(
+		ctx,
+		"work.contact.user.to_openid",
+		"cgi-bin/user/convert_to_openid",
+		body,
+		&result,
+	)
+	return result.Openid, err
+}
+
+func (c *UserClient) UserID(ctx context.Context, openID string) (string, error) {
+	body := struct {
+		OpenID string `json:"openid"`
+	}{
+		OpenID: openID,
+	}
+	var result convertToUseridResult
+	err := c.api.Post(
+		ctx,
+		"work.contact.user.to_userid",
+		"cgi-bin/user/convert_to_userid",
+		body,
+		&result,
+	)
+	return result.Userid, err
+}
+
+func (c *UserClient) Invite(
+	ctx context.Context,
+	userIDs []string,
+	departmentIDs []int,
+	tagIDs []int,
+) (*InviteResult, error) {
+	body := struct {
+		UserIDs       []string `json:"user"`
+		DepartmentIDs []int    `json:"party"`
+		TagIDs        []int    `json:"tag"`
+	}{
+		UserIDs:       userIDs,
+		DepartmentIDs: departmentIDs,
+		TagIDs:        tagIDs,
+	}
+	var result inviteResult
+	err := c.api.Post(ctx, "work.contact.user.invite", "cgi-bin/batch/invite", body, &result)
+	return &result.InviteResult, err
+}
+
+func (c *UserClient) UserIDByMobile(ctx context.Context, mobile string) (string, error) {
+	body := struct {
+		Mobile string `json:"mobile"`
+	}{
+		Mobile: mobile,
+	}
+	var result getUseridResult
+	err := c.api.Post(
+		ctx,
+		"work.contact.user.by_mobile",
+		"cgi-bin/user/getuserid",
+		body,
+		&result,
+	)
+	return result.Userid, err
+}
+
+func (c *UserClient) UserIDByEmail(
+	ctx context.Context,
+	email string,
+	emailType int,
+) (string, error) {
+	body := struct {
+		Email     string `json:"email"`
+		EmailType int    `json:"email_type"`
+	}{
+		Email:     email,
+		EmailType: emailType,
+	}
+	var result getUseridResult
+	err := c.api.Post(
+		ctx,
+		"work.contact.user.by_email",
+		"cgi-bin/user/get_userid_by_email",
+		body,
+		&result,
+	)
+	return result.Userid, err
+}
+
+func (c *UserClient) ListIDs(
+	ctx context.Context,
+	cursor string,
+	limit int,
+) (*UserIdList, error) {
+	body := struct {
+		Cursor string `json:"cursor,omitempty"`
+		Limit  int    `json:"limit,omitempty"`
+	}{
+		Cursor: cursor,
+		Limit:  limit,
+	}
+	var result userIdListResult
+	err := c.api.Post(ctx, "work.contact.user.list_ids", "cgi-bin/user/list_id", body, &result)
+	return &result.UserIdList, err
+}
+
 // DepartmentClient manages enterprise departments.
 type DepartmentClient struct {
 	api *api.Client
@@ -135,6 +276,37 @@ func (c *DepartmentClient) List(ctx context.Context, id int) ([]DepartmentInfo, 
 	}
 	err := c.api.Get(ctx, "work.contact.department.list", "cgi-bin/department/list", query, &result)
 	return result.Departments, err
+}
+
+func (c *DepartmentClient) SimpleList(
+	ctx context.Context,
+	id int,
+) ([]DepartmentIdInfo, error) {
+	query := make(url.Values)
+	if id > 0 {
+		query.Set("id", strconv.Itoa(id))
+	}
+	var result departmentIdListResult
+	err := c.api.Get(
+		ctx,
+		"work.contact.department.simple_list",
+		"cgi-bin/department/simplelist",
+		query,
+		&result,
+	)
+	return result.DepartmentId, err
+}
+
+func (c *DepartmentClient) Get(ctx context.Context, id int) (*DepartmentInfo, error) {
+	var result departmentGetResult
+	err := c.api.Get(
+		ctx,
+		"work.contact.department.get",
+		"cgi-bin/department/get",
+		url.Values{"id": []string{strconv.Itoa(id)}},
+		&result,
+	)
+	return &result.Department, err
 }
 
 // TagClient manages enterprise contact tags.
@@ -184,6 +356,63 @@ func (c *TagClient) List(ctx context.Context) ([]TagInfo, error) {
 	}
 	err := c.api.Get(ctx, "work.contact.tag.list", "cgi-bin/tag/list", nil, &result)
 	return result.Tags, err
+}
+
+func (c *TagClient) Get(ctx context.Context, id int) (*TagDetail, error) {
+	var result tagDetailResult
+	err := c.api.Get(
+		ctx,
+		"work.contact.tag.get",
+		"cgi-bin/tag/get",
+		url.Values{"tagid": []string{strconv.Itoa(id)}},
+		&result,
+	)
+	return &result.TagDetail, err
+}
+
+func (c *TagClient) AddMembers(
+	ctx context.Context,
+	id int,
+	userIDs []string,
+	departmentIDs []int,
+) (*TagMemberResult, error) {
+	return c.changeMembers(ctx, "addtagusers", id, userIDs, departmentIDs)
+}
+
+func (c *TagClient) DeleteMembers(
+	ctx context.Context,
+	id int,
+	userIDs []string,
+	departmentIDs []int,
+) (*TagMemberResult, error) {
+	return c.changeMembers(ctx, "deltagusers", id, userIDs, departmentIDs)
+}
+
+func (c *TagClient) changeMembers(
+	ctx context.Context,
+	action string,
+	id int,
+	userIDs []string,
+	departmentIDs []int,
+) (*TagMemberResult, error) {
+	body := struct {
+		ID            int      `json:"tagid"`
+		UserIDs       []string `json:"userlist"`
+		DepartmentIDs []int    `json:"partylist"`
+	}{
+		ID:            id,
+		UserIDs:       userIDs,
+		DepartmentIDs: departmentIDs,
+	}
+	var result tagMemberOpResult
+	err := c.api.Post(
+		ctx,
+		"work.contact.tag."+action,
+		"cgi-bin/tag/"+action,
+		body,
+		&result,
+	)
+	return &result.TagMemberResult, err
 }
 
 // BatchClient manages asynchronous contact import and export jobs.

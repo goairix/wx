@@ -105,13 +105,33 @@ func (c *Client) UpdateChat(ctx context.Context, input UpdateChatRequest) error 
 
 // GetChat returns an application group chat.
 func (c *Client) GetChat(ctx context.Context, chatID string) (*ChatInfo, error) {
-	result := new(ChatInfo)
+	var result struct {
+		Chat ChatInfo `json:"chat_info"`
+	}
 	err := c.api.Get(
 		ctx,
 		"work.message.chat.get",
 		"cgi-bin/appchat/get",
 		url.Values{"chatid": []string{chatID}},
-		result,
+		&result,
 	)
-	return result, err
+	return &result.Chat, err
+}
+
+// SendChat sends a message to an application group chat.
+func (c *Client) SendChat(
+	ctx context.Context,
+	chatID string,
+	message Messenger,
+	safe bool,
+) error {
+	body := map[string]interface{}{
+		"chatid":          chatID,
+		"msgtype":         message.MsgType(),
+		message.MsgType(): message,
+	}
+	if safe {
+		body["safe"] = 1
+	}
+	return c.api.Post(ctx, "work.message.chat.send", "cgi-bin/appchat/send", body, nil)
 }

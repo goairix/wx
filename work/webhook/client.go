@@ -52,6 +52,46 @@ type AuthorizationEvent struct {
 	TimeStamp int64  `xml:"TimeStamp" json:"TimeStamp"`
 }
 
+// ContactChangeEvent represents member, department, and tag changes.
+type ContactChangeEvent struct {
+	Event
+	UserID     string `xml:"UserID" json:"UserID"`
+	NewUserID  string `xml:"NewUserID" json:"NewUserID"`
+	Name       string `xml:"Name" json:"Name"`
+	Department string `xml:"Department" json:"Department"`
+	PartyID    int    `xml:"Id" json:"Id"`
+	ParentID   int    `xml:"ParentId" json:"ParentId"`
+	TagID      int    `xml:"TagId" json:"TagId"`
+}
+
+// ExternalContactChangeEvent represents external contact lifecycle changes.
+type ExternalContactChangeEvent struct {
+	Event
+	UserID         string `xml:"UserID" json:"UserID"`
+	ExternalUserID string `xml:"ExternalUserID" json:"ExternalUserID"`
+	State          string `xml:"State" json:"State"`
+	WelcomeCode    string `xml:"WelcomeCode" json:"WelcomeCode"`
+}
+
+// GroupChatChangeEvent represents customer group chat lifecycle changes.
+type GroupChatChangeEvent struct {
+	Event
+	ChatID       string `xml:"ChatId" json:"ChatId"`
+	UpdateDetail string `xml:"UpdateDetail" json:"UpdateDetail"`
+	JoinScene    int    `xml:"JoinScene" json:"JoinScene"`
+}
+
+// BatchJobEvent represents completion of an asynchronous contact job.
+type BatchJobEvent struct {
+	Event
+	BatchJob struct {
+		JobID   string `xml:"JobId" json:"JobId"`
+		JobType string `xml:"JobType" json:"JobType"`
+		ErrCode int    `xml:"ErrCode" json:"ErrCode"`
+		ErrMsg  string `xml:"ErrMsg" json:"ErrMsg"`
+	} `xml:"BatchJob" json:"BatchJob"`
+}
+
 type handlerOptions struct {
 	errorResponse corewebhook.ErrorResponse
 }
