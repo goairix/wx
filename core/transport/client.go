@@ -14,6 +14,7 @@ import (
 	"time"
 
 	wxerrors "github.com/goairix/wx/v2/core/errors"
+	"github.com/goairix/wx/v2/core/logging"
 	"github.com/goairix/wx/v2/core/observability"
 	"github.com/goairix/wx/v2/core/request"
 )
@@ -29,6 +30,7 @@ type Client struct {
 	baseURL          string
 	retry            RetryPolicy
 	hook             observability.Hook
+	logger           logging.Logger
 	maxResponseBytes int64
 }
 
@@ -39,6 +41,7 @@ type Option interface {
 
 type clientOptions struct {
 	hook             observability.Hook
+	logger           logging.Logger
 	maxResponseBytes int64
 }
 
@@ -64,6 +67,14 @@ func WithHook(hook observability.Hook) Option {
 	})
 }
 
+// WithLogger configures the structured logger used for request lifecycle
+// events. A nil logger disables logging.
+func WithLogger(logger logging.Logger) Option {
+	return optionFunc(func(options *clientOptions) {
+		options.logger = logger
+	})
+}
+
 // New constructs a transport client. A nil HTTP client gets a bounded default.
 func New(
 	httpClient *http.Client,
@@ -85,6 +96,7 @@ func New(
 		baseURL:          strings.TrimRight(baseURL, "/"),
 		retry:            retry.normalized(),
 		hook:             settings.hook,
+		logger:           normalizeLogger(settings.logger),
 		maxResponseBytes: settings.maxResponseBytes,
 	}
 }
@@ -94,13 +106,16 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	policy := c.retry.normalized()
 	if err := ctx.Err(); err != nil {
+		c.logFailed(ctx, req, 0, 0, policy.MaxAttempts, 0, "", err)
 		return err
 	}
 	if req.Result != nil && req.ResponseWriter != nil {
-		return fmt.Errorf("transport: Result and ResponseWriter cannot both be set")
+		err := fmt.Errorf("transport: Result and ResponseWriter cannot both be set")
+		c.logFailed(ctx, req, 0, 0, policy.MaxAttempts, 0, "", err)
+		return err
 	}
-	policy := c.retry.normalized()
 	client := c.httpClient
 	if client == nil {
 		client = &http.Client{Timeout: 30 * time.Second}
@@ -108,44 +123,56 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 
 	endpoint, err := resolveURL(c.baseURL, req.Path, req.Query)
 	if err != nil {
+		c.logFailed(ctx, req, 0, 0, policy.MaxAttempts, 0, "", err)
 		return err
 	}
 	body, err := encodeBody(req.Body)
 	if err != nil {
-		return fmt.Errorf("encode %s request body: %w", req.Operation, err)
+		encodedErr := fmt.Errorf("encode %s request body: %w", req.Operation, err)
+		c.logFailed(ctx, req, 0, 0, policy.MaxAttempts, 0, "", encodedErr)
+		return encodedErr
 	}
 
 	var lastErr error
 	for attempt := 1; attempt <= policy.MaxAttempts; attempt++ {
 		if err := ctx.Err(); err != nil {
+			c.logFailed(ctx, req, 0, attempt, policy.MaxAttempts, 0, "", err)
 			return err
 		}
 		httpReq, err := http.NewRequestWithContext(ctx, req.Method, endpoint, bytes.NewReader(body))
 		if err != nil {
+			c.logFailed(ctx, req, 0, attempt, policy.MaxAttempts, 0, "", err)
 			return err
 		}
 		httpReq.Header = cloneHeader(req.Header)
 		if req.Body != nil && httpReq.Header.Get("Content-Type") == "" {
 			httpReq.Header.Set("Content-Type", "application/json")
 		}
+		started := time.Now()
+		c.logStarted(ctx, req, attempt, policy.MaxAttempts)
 		if c.hook != nil {
 			c.hook.OnRequest(observability.Event{Operation: req.Operation, Platform: req.Platform})
 		}
-		started := time.Now()
 		response, doErr := client.Do(httpReq)
 		if doErr != nil {
+			duration := time.Since(started)
 			if ctxErr := ctx.Err(); ctxErr != nil {
-				c.observeResponse(req, 0, "", time.Since(started), ctxErr)
+				c.observeResponse(req, 0, "", duration, ctxErr)
+				c.logFailed(ctx, req, 0, attempt, policy.MaxAttempts, duration, "", ctxErr)
 				return ctxErr
 			}
 			lastErr = doErr
-			c.observeResponse(req, 0, "", time.Since(started), doErr)
+			c.observeResponse(req, 0, "", duration, doErr)
 			if attempt < policy.MaxAttempts && retryableRequest(req) {
-				if err := waitBackoff(ctx, policy.Backoff(attempt)); err != nil {
+				delay := policy.Backoff(attempt)
+				c.logRetrying(ctx, req, 0, attempt, policy.MaxAttempts, duration, delay, "", doErr)
+				if err := waitBackoff(ctx, delay); err != nil {
+					c.logFailed(ctx, req, 0, attempt, policy.MaxAttempts, duration, "", err)
 					return err
 				}
 				continue
 			}
+			c.logFailed(ctx, req, 0, attempt, policy.MaxAttempts, duration, "", doErr)
 			break
 		}
 		requestID := response.Header.Get("X-Request-Id")
@@ -163,13 +190,19 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 			!strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "json") {
 			_, copyErr := io.Copy(req.ResponseWriter, response.Body)
 			_ = response.Body.Close()
+			duration := time.Since(started)
 			c.observeResponse(
 				req,
 				response.StatusCode,
 				requestID,
-				time.Since(started),
+				duration,
 				copyErr,
 			)
+			if copyErr != nil {
+				c.logFailed(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID, copyErr)
+			} else {
+				c.logCompleted(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID)
+			}
 			return copyErr
 		}
 
@@ -177,32 +210,39 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 		_ = response.Body.Close()
 		if readErr != nil {
 			lastErr = readErr
+			duration := time.Since(started)
 			c.observeResponse(
 				req,
 				response.StatusCode,
 				requestID,
-				time.Since(started),
+				duration,
 				readErr,
 			)
+			c.logFailed(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID, readErr)
 			break
 		}
 		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 			lastErr = wxerrors.ParsePlatformError(req.Platform, req.Operation, response.StatusCode, responseBody, requestID)
+			duration := time.Since(started)
 			c.observeResponse(
 				req,
 				response.StatusCode,
 				requestID,
-				time.Since(started),
+				duration,
 				lastErr,
 			)
 			if attempt < policy.MaxAttempts &&
 				retryableRequest(req) &&
 				policy.RetryStatus[response.StatusCode] {
-				if err := waitBackoff(ctx, policy.Backoff(attempt)); err != nil {
+				delay := policy.Backoff(attempt)
+				c.logRetrying(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, delay, requestID, lastErr)
+				if err := waitBackoff(ctx, delay); err != nil {
+					c.logFailed(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID, err)
 					return err
 				}
 				continue
 			}
+			c.logFailed(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID, lastErr)
 			return lastErr
 		}
 		if platformErr := wxerrors.ParseResponseError(
@@ -212,53 +252,71 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 			responseBody,
 			requestID,
 		); platformErr != nil {
+			duration := time.Since(started)
 			c.observeResponse(
 				req,
 				response.StatusCode,
 				requestID,
-				time.Since(started),
+				duration,
 				platformErr,
 			)
+			c.logFailed(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID, platformErr)
 			return platformErr
 		}
 		if req.ResponseWriter != nil {
 			_, writeErr := req.ResponseWriter.Write(responseBody)
+			duration := time.Since(started)
 			c.observeResponse(
 				req,
 				response.StatusCode,
 				requestID,
-				time.Since(started),
+				duration,
 				writeErr,
 			)
+			if writeErr != nil {
+				c.logFailed(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID, writeErr)
+			} else {
+				c.logCompleted(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID)
+			}
 			return writeErr
 		}
 		if req.Result == nil || len(responseBody) == 0 || response.StatusCode == http.StatusNoContent {
-			c.observeResponse(req, response.StatusCode, requestID, time.Since(started), nil)
+			duration := time.Since(started)
+			c.observeResponse(req, response.StatusCode, requestID, duration, nil)
+			c.logCompleted(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID)
 			return nil
 		}
 		if bytesResult, ok := req.Result.(*[]byte); ok {
 			*bytesResult = append((*bytesResult)[:0], responseBody...)
-			c.observeResponse(req, response.StatusCode, requestID, time.Since(started), nil)
+			duration := time.Since(started)
+			c.observeResponse(req, response.StatusCode, requestID, duration, nil)
+			c.logCompleted(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID)
 			return nil
 		}
 		if err := json.Unmarshal(responseBody, req.Result); err != nil {
 			decodeErr := fmt.Errorf("decode %s response: %w", req.Operation, err)
+			duration := time.Since(started)
 			c.observeResponse(
 				req,
 				response.StatusCode,
 				requestID,
-				time.Since(started),
+				duration,
 				decodeErr,
 			)
+			c.logFailed(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID, decodeErr)
 			return decodeErr
 		}
-		c.observeResponse(req, response.StatusCode, requestID, time.Since(started), nil)
+		duration := time.Since(started)
+		c.observeResponse(req, response.StatusCode, requestID, duration, nil)
+		c.logCompleted(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID)
 		return nil
 	}
 	if lastErr != nil {
 		return lastErr
 	}
-	return fmt.Errorf("request %s failed", req.Operation)
+	err = fmt.Errorf("request %s failed", req.Operation)
+	c.logFailed(ctx, req, 0, 0, policy.MaxAttempts, 0, "", err)
+	return err
 }
 
 func readAllLimited(reader io.Reader, limit int64) ([]byte, error) {
