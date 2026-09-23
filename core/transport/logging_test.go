@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	stderrors "errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -249,6 +250,47 @@ func TestClientNetworkFailureLogDoesNotExposeRequestURL(t *testing.T) {
 	const secret = "secret-query-value"
 	httpTransport := roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, stderrors.New("connection refused")
+	})
+	logger := &recordingLogger{}
+	client := New(
+		&http.Client{Transport: httpTransport},
+		"http://example.test",
+		RetryPolicy{},
+		WithLogger(logger),
+	)
+
+	err := client.Do(context.Background(), request.Request{
+		Operation: "miniapp.auth.code2session",
+		Platform:  "miniapp",
+		Method:    http.MethodGet,
+		Path:      "/session?code=" + secret,
+	})
+	if err == nil || !strings.Contains(err.Error(), secret) {
+		t.Fatalf("returned error should remain unchanged: %v", err)
+	}
+
+	for _, event := range logger.snapshot() {
+		for _, attr := range event.attrs {
+			if strings.Contains(toString(attr.Value), secret) {
+				t.Fatalf("logged attribute exposes request URL: %#v", attr)
+			}
+		}
+	}
+}
+
+func TestClientWrappedPlatformFailureLogDoesNotExposeRequestURL(t *testing.T) {
+	const secret = "secret-query-value"
+	httpTransport := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, &url.Error{
+			Op:  "nested round trip",
+			URL: "http://example.test/session?code=" + secret,
+			Err: fmt.Errorf("round trip failed: %w", &wxerrors.Error{
+				Platform:  "miniapp",
+				Operation: "miniapp.auth.code2session",
+				Code:      "40029",
+				Message:   "invalid code",
+			}),
+		}
 	})
 	logger := &recordingLogger{}
 	client := New(

@@ -167,14 +167,11 @@ func (c *Client) logRequest(
 }
 
 func safeLogError(err error) error {
-	var platformErr *wxerrors.Error
-	if errors.As(err, &platformErr) {
-		return err
+	for {
+		var urlErr *url.Error
+		if !errors.As(err, &urlErr) || urlErr.Err == nil {
+			return err
+		}
+		err = urlErr.Err
 	}
-
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) && urlErr.Err != nil {
-		return urlErr.Err
-	}
-	return err
 }

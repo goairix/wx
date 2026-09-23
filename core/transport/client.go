@@ -148,7 +148,6 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 		if req.Body != nil && httpReq.Header.Get("Content-Type") == "" {
 			httpReq.Header.Set("Content-Type", "application/json")
 		}
-		started := time.Now()
 		c.logStarted(ctx, req, attempt, policy.MaxAttempts)
 		if c.hook != nil {
 			c.hook.OnRequest(observability.Event{
@@ -157,6 +156,7 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 				Platform:  req.Platform,
 			})
 		}
+		started := time.Now()
 		response, doErr := client.Do(httpReq)
 		if doErr != nil {
 			duration := time.Since(started)

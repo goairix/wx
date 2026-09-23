@@ -15,6 +15,7 @@ import (
 	"time"
 
 	wxerrors "github.com/goairix/wx/v2/core/errors"
+	"github.com/goairix/wx/v2/core/logging"
 	"github.com/goairix/wx/v2/core/observability"
 	"github.com/goairix/wx/v2/core/request"
 )
@@ -444,6 +445,50 @@ func TestClientPropagatesContextToHook(t *testing.T) {
 		if got := event.Context.Value(contextKey{}); got != "trace-sentinel" {
 			t.Errorf("event %d context value = %v", index, got)
 		}
+	}
+}
+
+func TestClientDurationExcludesStartLoggerAndHook(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	const observerDelay = 200 * time.Millisecond
+	var hookDuration time.Duration
+	logger := logging.LoggerFunc(func(
+		_ context.Context,
+		_ logging.Level,
+		event string,
+		_ ...logging.Attr,
+	) {
+		if event == "wx.request.started" {
+			time.Sleep(observerDelay)
+		}
+	})
+	client := New(
+		server.Client(),
+		server.URL,
+		RetryPolicy{},
+		WithLogger(logger),
+		WithHook(observability.HookFunc(func(event observability.Event) {
+			if event.StatusCode == 0 {
+				time.Sleep(observerDelay)
+				return
+			}
+			hookDuration = event.Duration
+		})),
+	)
+
+	if err := client.Do(context.Background(), request.Request{
+		Operation: "test.duration",
+		Method:    http.MethodGet,
+		Path:      "/",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if hookDuration >= observerDelay {
+		t.Fatalf("request duration %s includes start observer delay %s", hookDuration, observerDelay)
 	}
 }
 
