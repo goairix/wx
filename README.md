@@ -1,6 +1,41 @@
-# wx v2
+# wx
 
-`wx` 是面向 Go 1.17 及以上版本的微信平台 SDK。v2 覆盖公众号、小程序、移动应用、微信开放平台、企业微信和腾讯电子健康卡，并以一致的客户端、上下文和错误模型组织这些能力。
+[![Go Reference](https://pkg.go.dev/badge/github.com/goairix/wx/v2.svg)](https://pkg.go.dev/github.com/goairix/wx/v2)
+[![Go](https://img.shields.io/badge/Go-1.17%2B-00ADD8?logo=go)](https://go.dev/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+`wx` 是面向 Go 服务端应用的微信生态 SDK，统一封装公众号、小程序、移动应用、
+微信开放平台、企业微信和腾讯电子健康卡 API。
+
+SDK 以平台根客户端为入口，按业务领域组织接口，并提供统一的上下文传递、凭据缓存、
+错误模型、HTTP 重试、请求观测和回调处理能力。
+
+## 特性
+
+- 覆盖六类微信与腾讯医疗开放平台
+- 所有出站请求接收 `context.Context`，支持超时和主动取消
+- 自动获取、缓存和提前刷新服务端凭据
+- 使用标准库错误链，提供结构化平台错误
+- 支持注入 HTTP 客户端、缓存、凭据提供器、重试策略和观测钩子
+- 提供公众号、小程序、开放平台和企业微信的 typed webhook adapter
+- 默认限制缓冲响应大小，大文件下载支持流式写入
+- 核心包不依赖第三方错误库和日志库
+
+## 支持的平台
+
+| 平台 | 包 | 主要能力 |
+| --- | --- | --- |
+| 微信公众号 | [`official`](official/) | OAuth、用户、标签、菜单、模板消息、二维码、JS SDK、回调 |
+| 微信小程序 | [`miniapp`](miniapp/) | 登录、用户、订阅消息、小程序码、内容安全、多端能力、回调 |
+| 微信移动应用 | [`mobileapp`](mobileapp/) | OAuth 登录、access token 刷新和用户信息 |
+| 微信开放平台 | [`openplatform`](openplatform/) | 组件凭据、账号授权、代码模板、授权方客户端、回调 |
+| 企业微信 | [`work`](work/) | 登录、通讯录、客户联系、消息、客服、素材、ID 转换、回调 |
+| 腾讯电子健康卡 | [`healthcard`](healthcard/) | 健康卡、建档、实人认证、用卡上报、设备、通知和防黄牛 |
+
+## 环境要求
+
+- Go 1.17 或更高版本
+- 对应平台已经创建的应用，以及调用目标接口所需的权限
 
 ## 安装
 
@@ -10,80 +45,153 @@ go get github.com/goairix/wx/v2
 
 ## 快速开始
 
+下面的示例创建公众号客户端并读取用户资料。构造客户端只校验配置和组装依赖，
+不会发起网络请求。
+
 ```go
-ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-defer cancel()
+package main
 
-client, err := official.NewClient(official.Config{
-    AppID:     "wx-app-id",
-    AppSecret: "app-secret",
-})
-if err != nil {
-    log.Fatal(err)
-}
+import (
+	"context"
+	"errors"
+	"log"
+	"time"
 
-profile, err := client.Users().Info(ctx, "openid")
-if err != nil {
-    var platformErr *wxerrors.Error
-    if errors.As(err, &platformErr) {
-        log.Printf(
-            "operation=%s code=%s request_id=%s",
-            platformErr.Operation,
-            platformErr.Code,
-            platformErr.RequestID,
-        )
-    }
-    return
+	wxerrors "github.com/goairix/wx/v2/core/errors"
+	"github.com/goairix/wx/v2/official"
+)
+
+func main() {
+	client, err := official.NewClient(official.Config{
+		AppID:     "wx-app-id",
+		AppSecret: "app-secret",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	profile, err := client.Users().Info(ctx, "openid")
+	if err != nil {
+		var platformErr *wxerrors.Error
+		if errors.As(err, &platformErr) {
+			log.Printf(
+				"operation=%s code=%s request_id=%s",
+				platformErr.Operation,
+				platformErr.Code,
+				platformErr.RequestID,
+			)
+		}
+		log.Fatal(err)
+	}
+
+	log.Print(profile.Nickname)
 }
-log.Print(profile.Nickname)
 ```
 
-所有出站网络方法都把 `context.Context` 放在 receiver 后的第一个参数。请为入口请求设置超时，并把同一个 context 传到 SDK；取消会传播到凭据刷新、重试等待和 HTTP 请求。
+每个网络方法都把 `context.Context` 放在 receiver 后的第一个参数。建议在 HTTP、任务或
+消息入口创建带超时的 context，并沿调用链传给 SDK。
 
-启用 `RetryPolicy` 后，GET、HEAD、OPTIONS、PUT 和 DELETE 默认允许重试。POST 默认不重试，
-避免发送消息、创建资源等操作被重复执行；只有确认某个 POST 操作具备幂等性时，底层请求才应
-显式使用 `request.RetryAlways`。
+## 客户端结构
 
-## 平台入口
+每个平台通过一个根客户端保存配置和共享基础设施，具体 API 从领域入口调用：
 
-| 包 | 根客户端 | 主要能力 |
-| --- | --- | --- |
-| `official` | `official.NewClient` | 公众号 OAuth、用户、菜单、模板消息、二维码、JS SDK、回调 |
-| `miniapp` | `miniapp.NewClient` | 登录、用户、订阅消息、小程序码、内容安全、授权小程序管理、回调 |
-| `mobileapp` | `mobileapp.NewClient` | 移动应用 OAuth |
-| `openplatform` | `openplatform.NewClient` | 组件凭据、账号授权、代码模板、授权方客户端、回调 |
-| `work` | `work.NewClient` | 企业微信登录、通讯录、客户、消息、客服、素材、回调 |
-| `healthcard` | `healthcard.NewClient` | 腾讯电子健康卡注册、查询、认证、上报和通知 |
+```go
+officialClient.Users().Info(ctx, openID)
+miniappClient.Auth().Code2Session(ctx, code)
+workClient.Contact().Users().Get(ctx, userID)
+healthcardClient.Card().GetByID(ctx, request)
+```
 
-根客户端持有平台配置和共享基础设施，具体请求从 `client.Users()`、`client.Auth()`、`client.Contact()` 等领域入口发起。领域包之间不互相导入；开放平台根客户端负责组装授权公众号和授权小程序客户端。
+客户端支持按运行环境注入依赖：
 
-## core 架构
+```go
+client, err := official.NewClient(
+	official.Config{
+		AppID:     appID,
+		AppSecret: appSecret,
+	},
+	official.WithHTTPClient(httpClient),
+	official.WithCache(sharedCache),
+	official.WithRetryPolicy(retryPolicy),
+	official.WithHook(hook),
+)
+```
 
-| 包 | 职责 |
-| --- | --- |
-| `core/transport` | HTTP 编码、响应读取、重试和 context 取消 |
-| `core/auth` | 凭据获取、缓存、提前刷新和并发刷新协调 |
-| `core/cache` | 凭据缓存接口及进程内实现 |
-| `core/errors` | 自有错误构造、错误链兼容和结构化平台错误 |
-| `core/webhook` | 回调签名、AES 加解密和 HTTP 适配 |
-| `core/observability` | 请求观测钩子 |
-| `core/random` | 随机 nonce 等基础能力 |
+未提供 HTTP 客户端时，SDK 使用超时为 30 秒的默认客户端。未提供缓存时，SDK 使用并发安全的
+进程内缓存。多实例部署可以实现 [`core/cache.Cache`](core/cache/cache.go) 并注入共享存储。
 
-v2 不再提供 `support` 聚合包，也不依赖第三方错误包。普通原因错误仍兼容标准库 `errors.Is` 和 `errors.As`；平台返回的错误统一为 `*core/errors.Error`，可读取 `Platform`、`Operation`、`HTTPStatus`、`Code`、`Message` 和 `RequestID`。
+## 错误处理
 
-## 回调
+HTTP 错误和平台业务错误会转换为 `*core/errors.Error`：
 
-`official`、`miniapp`、`work` 和 `openplatform` 根客户端的 `Webhook()` 返回 typed callback adapter。适配器负责 URL 验证、签名校验、AES 解密和加密响应，然后把事件与请求 context 交给业务 handler。
+```go
+var platformErr *wxerrors.Error
+if errors.As(err, &platformErr) {
+	log.Printf(
+		"platform=%s operation=%s status=%d code=%s request_id=%s message=%s",
+		platformErr.Platform,
+		platformErr.Operation,
+		platformErr.HTTPStatus,
+		platformErr.Code,
+		platformErr.RequestID,
+		platformErr.Message,
+	)
+}
+
+if errors.Is(err, context.DeadlineExceeded) {
+	log.Print("request timed out")
+}
+```
+
+网络错误、context 错误和其他底层原因保留在错误链中，可以继续使用标准库
+`errors.Is` 和 `errors.As`。
+
+## 回调处理
+
+公众号、小程序、开放平台和企业微信客户端提供回调适配器。适配器负责 URL 验证、签名校验、
+AES 解密、事件解析和加密响应，业务 handler 只处理 typed event。
 
 ```go
 handler := client.Webhook().Handler(webhook.HandlerFunc(func(
-    ctx context.Context,
-    event webhook.Event,
+	ctx context.Context,
+	event webhook.Event,
 ) (corewebhook.Response, error) {
-    return corewebhook.Response{Body: []byte("success")}, nil
+	log.Printf("event=%s", event.Event)
+	return corewebhook.Response{Body: []byte("success")}, nil
 }))
 
 http.Handle("/wechat/callback", handler)
 ```
 
-各平台的可执行示例位于对应包的 `example_test.go`。从 v1 升级时，请按 [MIGRATION.md](MIGRATION.md) 修改导入路径、构造函数和方法签名。
+## 文档
+
+- [SDK 使用手册](wiki/Home.md)：安装、平台接入、公共配置、凭据、缓存、重试、错误、回调、观测和部署建议
+- [Go API 文档](https://pkg.go.dev/github.com/goairix/wx/v2)
+- [微信公众号](official/README.md)
+- [微信小程序](miniapp/README.md)
+- [微信移动应用](mobileapp/README.md)
+- [微信开放平台](openplatform/README.md)
+- [企业微信](work/README.md)
+- [腾讯电子健康卡](healthcard/README.md)
+
+## 开发
+
+提交代码前运行：
+
+```bash
+gofmt -w .
+go test ./...
+go vet ./...
+```
+
+扩展平台能力时，请沿用“平台根客户端 → 领域客户端 → 请求 DTO”的结构，并为公开 API、
+关键行为和使用方式补充测试与文档。
+
+## License
+
+[MIT](LICENSE)
+
+已有项目升级请参阅[迁移指南](MIGRATION.md)。
