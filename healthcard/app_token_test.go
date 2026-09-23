@@ -125,3 +125,62 @@ func TestAppTokenRequestPreservesHealthcardEnvelope(t *testing.T) {
 		t.Fatalf("token=%q err=%v", got, err)
 	}
 }
+
+func TestAppTokenRefreshesWhenCredentialIsInsideRefreshWindow(t *testing.T) {
+	var calls int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		call := atomic.AddInt32(&calls, 1)
+		if r.URL.Path != getAppTokenPath {
+			t.Errorf("path = %q, want %q", r.URL.Path, getAppTokenPath)
+		}
+
+		var body struct {
+			CommonIn CommonIn `json:"commonIn"`
+			Req      struct {
+				AppID string `json:"appId"`
+			} `json:"req"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		if body.CommonIn.AppToken != "" ||
+			body.CommonIn.RequestID == "" ||
+			body.CommonIn.Sign == "" ||
+			body.Req.AppID != "app" {
+			t.Errorf("unexpected request envelope: %+v", body)
+		}
+
+		_, _ = fmt.Fprintf(
+			w,
+			`{"commonOut":{"requestId":"rid-%d","resultCode":0},"rsp":{"appToken":"token-%d","expiresIn":60}}`,
+			call,
+			call,
+		)
+	}))
+	defer server.Close()
+
+	client, err := NewClient(
+		testConfig(),
+		WithBaseURL(server.URL),
+		WithRequestID(func() string { return "request-id" }),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	first, err := client.AppToken(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := client.AppToken(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != "token-1" || second != "token-2" {
+		t.Fatalf("tokens = %q, %q", first, second)
+	}
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Fatalf("token requests = %d, want 2", got)
+	}
+}
