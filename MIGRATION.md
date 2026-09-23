@@ -16,20 +16,40 @@ go mod tidy
 | v1 路径 | v2 路径 | 说明 |
 | --- | --- | --- |
 | `github.com/goairix/wx/official` | `github.com/goairix/wx/v2/official` | 公众号根客户端 |
+| `github.com/goairix/wx/official/{article,authorizer,menu,message,oauth,user}` | `github.com/goairix/wx/v2/official/{article,authorizer,menu,message,oauth,user}` | 领域名不变，module 增加 `/v2` |
 | `github.com/goairix/wx/mini_program` | `github.com/goairix/wx/v2/miniapp` | 小程序目录去掉下划线 |
 | `github.com/goairix/wx/app` | `github.com/goairix/wx/v2/mobileapp` | 移动应用使用明确名称 |
+| `github.com/goairix/wx/app/oauth` | `github.com/goairix/wx/v2/mobileapp/oauth` | 移动应用 OAuth |
 | `github.com/goairix/wx/open_platform` | `github.com/goairix/wx/v2/openplatform` | 开放平台目录去掉下划线 |
+| `github.com/goairix/wx/open_platform/authorizer` | `github.com/goairix/wx/v2/openplatform/authorizer` | 授权方管理 |
+| `github.com/goairix/wx/open_platform/code` | `github.com/goairix/wx/v2/openplatform/code` | 授权小程序代码管理 |
+| `github.com/goairix/wx/open_platform/code_template` | `github.com/goairix/wx/v2/openplatform/template` | 代码模板目录重命名 |
 | `github.com/goairix/wx/work` | `github.com/goairix/wx/v2/work` | 企业微信根客户端 |
+| `github.com/goairix/wx/work/{auth,contact,customer,kf,media,message}` | `github.com/goairix/wx/v2/work/{auth,contact,customer,kf,media,message}` | 领域名不变，module 增加 `/v2` |
 | `github.com/goairix/wx/work/account_id` | `github.com/goairix/wx/v2/work/accountid` | 账号 ID 目录去掉下划线 |
 | `github.com/goairix/wx/work/mini_program` | `github.com/goairix/wx/v2/work/miniapp` | 企业小程序目录重命名 |
+| `github.com/goairix/wx/work/http` | `github.com/goairix/wx/v2/core/transport` | 企业微信私有 HTTP 层并入 core，不再直接调用 |
 | `github.com/goairix/wx/open_work` | `github.com/goairix/wx/v2/work/authorizer` | 企业微信第三方授权并入 work |
+| `github.com/goairix/wx/open_work/authorizer` | `github.com/goairix/wx/v2/work/authorizer` | 企业微信第三方授权领域 |
 | `github.com/goairix/wx/health_card` | `github.com/goairix/wx/v2/healthcard` | 健康卡目录去掉下划线 |
+| `github.com/goairix/wx/health_card/*` | `github.com/goairix/wx/v2/healthcard/*` | 健康卡领域沿用原领域名，根目录重命名 |
 | `github.com/goairix/wx/official/qr_code` | `github.com/goairix/wx/v2/official/qrcode` | 二维码领域目录重命名 |
 | `github.com/goairix/wx/mini_program/qr_code` | `github.com/goairix/wx/v2/miniapp/qrcode` | 普通二维码领域目录重命名 |
 | `github.com/goairix/wx/mini_program/wxa_code` | `github.com/goairix/wx/v2/miniapp/wxacode` | 小程序码领域目录重命名 |
 | `github.com/goairix/wx/mini_program/content` | `github.com/goairix/wx/v2/miniapp/security` | 内容安全领域改用职责名称 |
+| `github.com/goairix/wx/mini_program/platform/multi_terminal` | `github.com/goairix/wx/v2/miniapp/multiterminal` | 多端身份领域扁平化并重命名 |
+| `github.com/goairix/wx/mini_program/{auth,authorizer,encryptor,message,user}` | `github.com/goairix/wx/v2/miniapp/{auth,authorizer,encryptor,message,user}` | 领域名不变，平台根目录重命名 |
+| `github.com/goairix/wx/base/jssdk` | `github.com/goairix/wx/v2/official/jssdk` | JS SDK 归入公众号领域 |
+| `github.com/goairix/wx/base/open` | `github.com/goairix/wx/v2/official/authorizer` | 入口改为 `client.Authorizer().Open()` |
+| `github.com/goairix/wx/base/server` | 各平台 `webhook` 包 | 按平台改用 `official/webhook`、`miniapp/webhook`、`work/webhook` 或 `openplatform/webhook` |
+| `github.com/goairix/wx/kernel/event` | 各平台 `webhook` 包 | 通用事件替换为平台 typed event |
+| `github.com/goairix/wx/kernel/message` | 各平台 `webhook` 包 | 入站消息模型替换为平台 typed event |
+| `github.com/goairix/wx/kernel/message/reply` | 各平台 `webhook` 包 | handler 改为平台 `HandlerFunc`，并返回 `core/webhook.Response` |
+| `github.com/goairix/wx/kernel/error` | `github.com/goairix/wx/v2/core/errors` | 结构化错误和错误链 |
+| `github.com/goairix/wx/kernel/contracts` | 已删除，无直接公开替代 | 使用平台根客户端、领域入口和 `core/auth.Provider` 等明确类型 |
+| `github.com/goairix/wx/kernel/user` | 已删除，无单一替代 | 使用 `official/user`、`official/oauth` 或对应平台用户模型 |
 
-所有未在表中重命名的领域包，都在原路径前缀中加入 `/v2`。例如 `official/oauth` 迁移为 `github.com/goairix/wx/v2/official/oauth`。
+不要对表外路径机械添加 `/v2`。旧 `base`、`kernel` 和平台私有 HTTP 包已经删除或并入 core；找不到映射时，应从对应平台 README 的领域入口迁移调用。
 
 ## 3. 构造函数映射
 
@@ -97,7 +117,7 @@ v2 完全移除了顶层 `support` 包。请直接依赖职责明确的 core 包
 | `support/util.RandString` | `core/random` |
 | 第三方错误包装 | `core/errors` 与标准库 `errors` |
 
-缓存和 HTTP option 的类型随之变化。自定义缓存应实现 `core/cache.Cache`；自定义重试策略应实现 `core/transport.RetryPolicy`。旧 locker option 已删除。
+缓存和 HTTP option 的类型随之变化。自定义缓存应实现 `core/cache.Cache`。重试策略使用 `core/transport.RetryPolicy` 结构体，按 `MaxAttempts`、`Backoff` 和 `RetryStatus` 等字段构造后传给平台的 `WithRetryPolicy`（健康卡使用 `WithRetry`）。旧 locker option 已删除。
 
 ## 6. 错误处理
 
@@ -137,7 +157,7 @@ if errors.As(err, &platformErr) {
 完成迁移后运行：
 
 ```bash
-gofmt -w .
+gofmt -w $(find . -name '*.go' -type f)
 go mod tidy
 go test -race ./...
 go vet ./...
