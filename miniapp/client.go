@@ -8,7 +8,9 @@ import (
 	corecache "github.com/goairix/wx/v2/core/cache"
 	"github.com/goairix/wx/v2/core/transport"
 	"github.com/goairix/wx/v2/miniapp/auth"
+	"github.com/goairix/wx/v2/miniapp/authorizer"
 	"github.com/goairix/wx/v2/miniapp/encryptor"
+	"github.com/goairix/wx/v2/miniapp/internal/api"
 	"github.com/goairix/wx/v2/miniapp/message"
 	"github.com/goairix/wx/v2/miniapp/qrcode"
 	"github.com/goairix/wx/v2/miniapp/security"
@@ -20,17 +22,18 @@ import (
 const defaultBaseURL = "https://api.weixin.qq.com"
 
 type Client struct {
-	config    Config
-	transport *transport.Client
-	token     *authpkg.Manager
-	auth      *auth.Auth
-	users     *user.Client
-	messages  *message.Client
-	qr        *qrcode.Client
-	codes     *wxacode.Client
-	security  *security.Client
-	encryptor *encryptor.Encryptor
-	webhook   *miniappwebhook.Client
+	config     Config
+	transport  *transport.Client
+	token      *authpkg.Manager
+	auth       *auth.Auth
+	authorizer *authorizer.Client
+	users      *user.Client
+	messages   *message.Client
+	qr         *qrcode.Client
+	codes      *wxacode.Client
+	security   *security.Client
+	encryptor  *encryptor.Encryptor
+	webhook    *miniappwebhook.Client
 }
 
 // NewClient constructs a context-aware miniapp client.
@@ -74,6 +77,8 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 		c.token = authpkg.NewManager("miniapp", identity, cc, provider)
 	}
 	c.auth = auth.New(tr, auth.Config{AppID: config.AppID, AppSecret: config.AppSecret})
+	executor := api.New(tr, c.token)
+	c.authorizer = authorizer.NewClient(executor)
 	c.users = user.New(tr, c.token)
 	c.messages = message.New(tr, c.token)
 	c.qr = qrcode.New(tr, c.token)
@@ -94,6 +99,11 @@ func (c *Client) Config() Config {
 
 func (c *Client) Auth() *auth.Auth {
 	return c.auth
+}
+
+// Authorizer returns operations available to an authorized miniapp.
+func (c *Client) Authorizer() *authorizer.Client {
+	return c.authorizer
 }
 
 func (c *Client) User() *user.Client {
