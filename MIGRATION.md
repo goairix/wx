@@ -27,16 +27,19 @@ go mod tidy
 | `github.com/goairix/wx/work` | `github.com/goairix/wx/v2/work` | 企业微信根客户端 |
 | `github.com/goairix/wx/work/{auth,contact,customer,kf,media,message}` | `github.com/goairix/wx/v2/work/{auth,contact,customer,kf,media,message}` | 领域名不变，module 增加 `/v2` |
 | `github.com/goairix/wx/work/account_id` | `github.com/goairix/wx/v2/work/accountid` | 账号 ID 目录去掉下划线 |
+| `github.com/goairix/wx/work/mini_program/auth` | `github.com/goairix/wx/v2/work/miniapp` | `Session` 并入企业小程序 `Client` |
 | `github.com/goairix/wx/work/mini_program` | `github.com/goairix/wx/v2/work/miniapp` | 企业小程序目录重命名 |
 | `github.com/goairix/wx/work/http` | `github.com/goairix/wx/v2/core/transport` | 企业微信私有 HTTP 层并入 core，不再直接调用 |
 | `github.com/goairix/wx/open_work` | `github.com/goairix/wx/v2/work/authorizer` | 企业微信第三方授权并入 work |
 | `github.com/goairix/wx/open_work/authorizer` | `github.com/goairix/wx/v2/work/authorizer` | 企业微信第三方授权领域 |
 | `github.com/goairix/wx/health_card` | `github.com/goairix/wx/v2/healthcard` | 健康卡目录去掉下划线 |
-| `github.com/goairix/wx/health_card/*` | `github.com/goairix/wx/v2/healthcard/*` | 健康卡领域沿用原领域名，根目录重命名 |
+| `github.com/goairix/wx/health_card/anti_fraud` | `github.com/goairix/wx/v2/healthcard/antifraud` | 防黄牛领域去掉下划线 |
+| `github.com/goairix/wx/health_card/{card,contracts,device,model,notification,patient,usage,verification}` | `github.com/goairix/wx/v2/healthcard/{card,contracts,device,model,notification,patient,usage,verification}` | 其余健康卡领域保持同名 |
 | `github.com/goairix/wx/official/qr_code` | `github.com/goairix/wx/v2/official/qrcode` | 二维码领域目录重命名 |
 | `github.com/goairix/wx/mini_program/qr_code` | `github.com/goairix/wx/v2/miniapp/qrcode` | 普通二维码领域目录重命名 |
 | `github.com/goairix/wx/mini_program/wxa_code` | `github.com/goairix/wx/v2/miniapp/wxacode` | 小程序码领域目录重命名 |
 | `github.com/goairix/wx/mini_program/content` | `github.com/goairix/wx/v2/miniapp/security` | 内容安全领域改用职责名称 |
+| `github.com/goairix/wx/mini_program/platform/multi_terminal/oauth` | `github.com/goairix/wx/v2/miniapp/multiterminal` | `CodeToVerifyInfo` 并入多端身份 `Client` |
 | `github.com/goairix/wx/mini_program/platform/multi_terminal` | `github.com/goairix/wx/v2/miniapp/multiterminal` | 多端身份领域扁平化并重命名 |
 | `github.com/goairix/wx/mini_program/{auth,authorizer,encryptor,message,user}` | `github.com/goairix/wx/v2/miniapp/{auth,authorizer,encryptor,message,user}` | 领域名不变，平台根目录重命名 |
 | `github.com/goairix/wx/base/jssdk` | `github.com/goairix/wx/v2/official/jssdk` | JS SDK 归入公众号领域 |
@@ -78,6 +81,8 @@ v2 构造函数统一接收配置结构并返回 `(*Client, error)`。调用方�
 | `client.Contact().Users().Get(userID)` | `client.Contact().Users().Get(ctx, userID)` |
 | `client.AccountId()` | `client.AccountID()` |
 | `client.MiniProgram()` | `client.MiniApp()` |
+| `client.MiniProgram().Auth().Session(code)` | `client.MiniApp().Session(ctx, code)` |
+| `multiTerminal.OAuth().CodeToVerifyInfo(code)` | `client.MultiTerminal().CodeToVerifyInfo(ctx, code)` |
 | `client.CodeTemplate()` | `client.Templates()` |
 | `client.Official(appID, refreshToken)` | `client.AuthorizedOfficial(appID, refreshToken)` |
 | `client.MiniProgram(appID, refreshToken)` | `client.AuthorizedMiniApp(appID, refreshToken)` |
