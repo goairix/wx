@@ -1,5 +1,8 @@
 # AccessTokenProvider 抽象设计
 
+> **历史设计：** 本文保留重构前的设计依据，示例中的旧目录和旧签名不代表 v2 当前 API。请以仓库根 `README.md`、各平台 `README.md` 和 `MIGRATION.md` 为准。
+
+
 ## 背景
 
 当前 SDK 各平台（official、mini_program、work、open_platform）内部直接调用微信 API 获取 access_token，并自行管理缓存和刷新。在实际业务场景中，access_token 通常由公共服务统一管理（例如通过 `POST /resource/app/token/get` 获取），SDK 需要支持从外部加载 access_token。

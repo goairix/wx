@@ -4,6 +4,8 @@
 所有网络方法都接收 `context.Context`，并使用 `core/transport`、`core/auth`、`core/cache`
 和 `core/errors`。
 
+这些 core 包直接承担传输、凭据、缓存和错误职责；v2 不提供或依赖旧 `support` 聚合包。
+
 ## 创建客户端
 
 ```go
@@ -22,6 +24,9 @@ client, err := openplatform.NewClient(
 if err != nil {
     return err
 }
+
+ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+defer cancel()
 ```
 
 构造函数只校验配置和组装对象，不发起网络请求。测试环境或代理环境可通过
@@ -186,3 +191,5 @@ if stderrors.As(err, &platformErr) {
     )
 }
 ```
+
+`core/errors` 由本项目实现，并兼容标准库 `errors.Is` 和 `errors.As`。context 取消会传播到组件凭据刷新、授权方凭据刷新、重试等待和 HTTP 请求。完整可执行示例见 `example_test.go`。

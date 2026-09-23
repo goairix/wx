@@ -1,5 +1,8 @@
 # 健康卡 appToken 缓存改造设计
 
+> **历史设计：** 本文保留重构前的设计依据，示例中的旧目录和旧签名不代表 v2 当前 API。请以仓库根 `README.md`、各平台 `README.md` 和 `MIGRATION.md` 为准。
+
+
 ## 目标
 
 让 `health_card.Client` 按仓库其它微信模块的方式使用统一 `support/cache.Cache` 和 `support/lock.Locker` 管理 `appToken`，支持单进程默认缓存和生产环境注入共享缓存。

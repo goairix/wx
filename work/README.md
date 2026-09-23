@@ -1,6 +1,6 @@
 # 企业微信
 
-`work` 是 v2 的企业微信客户端。所有网络方法都接收 `context.Context`，共享同一个 HTTP 传输层、凭据缓存、重试策略和观测钩子。
+`work` 是 v2 的企业微信客户端。所有网络方法都接收 `context.Context`，共享同一个 HTTP 传输层、凭据缓存、重试策略和观测钩子。底层分别由 `core/transport`、`core/auth`、`core/cache` 和 `core/observability` 提供，不依赖旧 `support` 聚合包。
 
 ## 安装
 
@@ -56,7 +56,8 @@ client, err := work.NewClient(
 ## 通讯录
 
 ```go
-ctx := context.Background()
+ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+defer cancel()
 
 err := client.Contact().Users().Create(ctx, contact.CreateUserRequest{
     Userid:     "zhangsan",
@@ -142,7 +143,7 @@ handler := client.Webhook().Handler(
 
 ## 错误处理
 
-企业微信 API 错误统一返回 `*core/errors.Error`，错误码保留为字符串：
+企业微信 API 错误统一返回 v2 自有的 `*core/errors.Error`，错误码保留为字符串：
 
 ```go
 var platformError *wxerrors.Error
@@ -157,4 +158,4 @@ if errors.As(err, &platformError) {
 }
 ```
 
-传输错误和调用链错误支持标准库 `errors.Is`、`errors.As`。
+传输错误和调用链错误支持标准库 `errors.Is`、`errors.As`。context 取消会停止凭据获取、重试等待和 HTTP 请求。完整可执行示例见 `example_test.go`。

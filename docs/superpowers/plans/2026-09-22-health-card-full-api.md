@@ -1,5 +1,8 @@
 # 腾讯电子健康卡完整接口实现计划
 
+> **历史文档：** 本文记录 v2 重构前或重构过程中的设计与执行步骤，旧目录和旧签名仅用于追溯。当前公开 API 与目录以仓库根 `README.md`、各平台 `README.md` 和 `MIGRATION.md` 为准。
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **目标：** 将 `health_card` 重构为根客户端统一挂载领域模块的完整 SDK，覆盖腾讯服务 139 页面列出的 33 项接口，并为每个包提供中文 README。

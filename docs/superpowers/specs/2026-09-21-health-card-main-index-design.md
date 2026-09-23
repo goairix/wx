@@ -1,5 +1,8 @@
 # Health Card Main-Index Scenarios Design
 
+> **历史设计：** 本文保留重构前的设计依据，示例中的旧目录和旧签名不代表 v2 当前 API。请以仓库根 `README.md`、各平台 `README.md` 和 `MIGRATION.md` 为准。
+
+
 ## Goal and scope
 
 Extend `health_card` for the Tencent Health Card mandatory filing, query-verification, standard card-display, and card-usage-reporting acceptance scenarios. Keep the SDK as a Go client for Tencent server APIs; business HTTP handlers, patient persistence, UI navigation, and WeChat facial-recognition SDK calls remain the integrating application's responsibility.

@@ -1,6 +1,6 @@
 # 腾讯电子健康卡 SDK
 
-`healthcard` 按领域封装腾讯电子健康卡开放平台。根客户端使用 v2 的 `core/transport`、`core/auth`、`core/cache` 和 `core/errors`，负责 `appToken`、公共参数、签名、请求发送和错误转换。
+`healthcard` 按领域封装腾讯电子健康卡开放平台。根客户端使用 v2 的 `core/transport`、`core/auth`、`core/cache` 和 `core/errors`，负责 `appToken`、公共参数、签名、请求发送和错误转换。它不依赖旧 `support` 聚合包。
 
 ## 创建客户端
 
@@ -132,5 +132,7 @@ if errors.As(err, &platformErr) {
 ```
 
 上下文错误保留在错误链中，可继续使用标准库 `errors.Is(err, context.Canceled)` 和 `errors.Is(err, context.DeadlineExceeded)`。
+
+`core/errors` 的错误构造、包装和结构化平台错误由本项目实现。完整可执行示例见 `example_test.go`。
 
 `wechatCode`、`healthCode` 和 `regInfoCode` 等一次性编码由前端流程取得后交给业务后端。`AppSecret`、个人信息和一次性编码不应下发到前端或写入日志。

@@ -1,5 +1,8 @@
 # Health Card Client Design
 
+> **历史设计：** 本文保留重构前的设计依据，示例中的旧目录和旧签名不代表 v2 当前 API。请以仓库根 `README.md`、各平台 `README.md` 和 `MIGRATION.md` 为准。
+
+
 ## Goal
 
 Add a standalone `health_card` package for the Tencent Electronic Health Card Open Platform APIs used by the WeChat mini-program binding-card plugin (`serviceId=138`). The package will let a business backend exchange plugin one-time codes for health-card data without coupling the feature to `mini_program/auth` or WeChat callback handling.

@@ -1,5 +1,8 @@
 # Event Handler Redesign
 
+> **历史设计：** 本文保留重构前的设计依据，示例中的旧目录和旧签名不代表 v2 当前 API。请以仓库根 `README.md`、各平台 `README.md` 和 `MIGRATION.md` 为准。
+
+
 ## Background
 
 The current event handling system has several architectural issues:

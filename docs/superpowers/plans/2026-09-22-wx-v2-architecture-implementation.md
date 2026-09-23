@@ -1,5 +1,8 @@
 # wx v2 Architecture Implementation Plan
 
+> **状态（2026-09-23）：已完成。** 下方 checklist 保留为 v2 重构的实施记录；当前公开 API、目录和迁移方式以仓库根 `README.md`、各平台 `README.md` 与 `MIGRATION.md` 为准。
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在 `v2` 分支实现一个兼容性不受 v1 约束的 SDK：所有平台共享 core 请求、认证、缓存、错误和可观测性基础设施，业务能力按平台和领域模块组织，并以 `v2.0.0` 发布。

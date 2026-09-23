@@ -1,5 +1,8 @@
 # Health Card Client Implementation Plan
 
+> **历史文档：** 本文记录 v2 重构前或重构过程中的设计与执行步骤，旧目录和旧签名仅用于追溯。当前公开 API 与目录以仓库根 `README.md`、各平台 `README.md` 和 `MIGRATION.md` 为准。
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a standalone `health_card` Go package that calls the Tencent Electronic Health Card Open Platform APIs required by the WeChat mini-program binding-card plugin.

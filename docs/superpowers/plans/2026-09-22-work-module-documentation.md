@@ -1,5 +1,8 @@
 # Work Module Documentation Plan
 
+> **历史文档：** 本文记录 v2 重构前或重构过程中的设计与执行步骤，旧目录和旧签名仅用于追溯。当前公开 API 与目录以仓库根 `README.md`、各平台 `README.md` 和 `MIGRATION.md` 为准。
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 为 `work/` 及其全部子包补充可检索的 Go 文档注释、模块 README 和可复制的使用示例。
