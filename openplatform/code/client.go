@@ -26,10 +26,7 @@ type Client struct {
 }
 
 // NewClient constructs a miniapp code client factory.
-func NewClient(
-	transportClient *transport.Client,
-	factory CredentialFactory,
-) *Client {
+func NewClient(transportClient *transport.Client, factory CredentialFactory) *Client {
 	return &Client{
 		transport: transportClient,
 		factory:   factory,
@@ -51,13 +48,7 @@ type AuthorizerClient struct {
 }
 
 // Commit uploads code based on a component template.
-func (c *AuthorizerClient) Commit(
-	ctx context.Context,
-	templateID int64,
-	version string,
-	description string,
-	extJSON string,
-) error {
+func (c *AuthorizerClient) Commit(ctx context.Context, templateID int64, version, description, extJSON string) error {
 	return c.do(
 		ctx,
 		"openplatform.code.commit",
@@ -78,10 +69,7 @@ func (c *AuthorizerClient) Commit(
 }
 
 // QRCode returns the experience-version QR code and its content type.
-func (c *AuthorizerClient) QRCode(
-	ctx context.Context,
-	path string,
-) ([]byte, string, error) {
+func (c *AuthorizerClient) QRCode(ctx context.Context, path string) ([]byte, string, error) {
 	credential, err := c.credential.Token(ctx)
 	if err != nil {
 		return nil, "", err
@@ -112,11 +100,7 @@ func (c *AuthorizerClient) QRCode(
 	}
 	var fields api.ErrorFields
 	if json.Unmarshal(body, &fields) == nil && fields.ErrCode != 0 {
-		return nil, "", api.Error(
-			"openplatform.code.qrcode",
-			fields,
-			meta,
-		)
+		return nil, "", api.Error("openplatform.code.qrcode", fields, meta)
 	}
 	return nil, "", &wxerrors.Error{
 		Platform:   "openplatform",
@@ -149,9 +133,7 @@ func (c *AuthorizerClient) Pages(ctx context.Context) ([]string, error) {
 }
 
 // Categories returns the service categories available to the miniapp.
-func (c *AuthorizerClient) Categories(
-	ctx context.Context,
-) ([]map[string]interface{}, error) {
+func (c *AuthorizerClient) Categories(ctx context.Context) ([]map[string]interface{}, error) {
 	var response struct {
 		api.ErrorFields
 		Categories []map[string]interface{} `json:"category_list"`
@@ -172,10 +154,7 @@ func (c *AuthorizerClient) Categories(
 }
 
 // SubmitAudit submits the uploaded version for review.
-func (c *AuthorizerClient) SubmitAudit(
-	ctx context.Context,
-	data map[string]interface{},
-) (int64, error) {
+func (c *AuthorizerClient) SubmitAudit(ctx context.Context, data map[string]interface{}) (int64, error) {
 	var response struct {
 		api.ErrorFields
 		AuditID int64 `json:"auditid"`
@@ -196,10 +175,7 @@ func (c *AuthorizerClient) SubmitAudit(
 }
 
 // AuditStatus returns the status of one audit.
-func (c *AuthorizerClient) AuditStatus(
-	ctx context.Context,
-	auditID int64,
-) (map[string]interface{}, error) {
+func (c *AuthorizerClient) AuditStatus(ctx context.Context, auditID int64) (map[string]interface{}, error) {
 	return c.status(
 		ctx,
 		"openplatform.code.audit_status",
@@ -214,9 +190,7 @@ func (c *AuthorizerClient) AuditStatus(
 }
 
 // LatestAuditStatus returns the most recent audit status.
-func (c *AuthorizerClient) LatestAuditStatus(
-	ctx context.Context,
-) (map[string]interface{}, error) {
+func (c *AuthorizerClient) LatestAuditStatus(ctx context.Context) (map[string]interface{}, error) {
 	return c.status(
 		ctx,
 		"openplatform.code.latest_audit_status",
@@ -238,10 +212,7 @@ func (c *AuthorizerClient) RevokeAudit(ctx context.Context) error {
 }
 
 // UrgentAudit requests accelerated review for an audit.
-func (c *AuthorizerClient) UrgentAudit(
-	ctx context.Context,
-	auditID int64,
-) error {
+func (c *AuthorizerClient) UrgentAudit(ctx context.Context, auditID int64) error {
 	return c.do(
 		ctx,
 		"openplatform.code.urgent_audit",
@@ -278,11 +249,7 @@ func (c *AuthorizerClient) RollbackRelease(ctx context.Context) error {
 }
 
 func (c *AuthorizerClient) do(
-	ctx context.Context,
-	operation string,
-	method string,
-	path string,
-	body interface{},
+	ctx context.Context, operation, method, path string, body interface{},
 ) error {
 	var response api.ErrorFields
 	return c.doResult(
@@ -298,9 +265,7 @@ func (c *AuthorizerClient) do(
 
 func (c *AuthorizerClient) doResult(
 	ctx context.Context,
-	operation string,
-	method string,
-	path string,
+	operation, method, path string,
 	body interface{},
 	result interface{},
 	fields *api.ErrorFields,
@@ -329,11 +294,7 @@ func (c *AuthorizerClient) doResult(
 }
 
 func (c *AuthorizerClient) status(
-	ctx context.Context,
-	operation string,
-	method string,
-	path string,
-	body interface{},
+	ctx context.Context, operation, method, path string, body interface{},
 ) (map[string]interface{}, error) {
 	result := make(map[string]interface{})
 	credential, err := c.credential.Token(ctx)
@@ -364,11 +325,7 @@ func (c *AuthorizerClient) status(
 	return result, nil
 }
 
-func mapError(
-	operation string,
-	result map[string]interface{},
-	meta *request.ResponseMeta,
-) error {
+func mapError(operation string, result map[string]interface{}, meta *request.ResponseMeta) error {
 	code := "0"
 	switch value := result["errcode"].(type) {
 	case float64:

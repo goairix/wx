@@ -33,7 +33,9 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 	if strings.TrimSpace(config.AppID) == "" {
 		return nil, fmt.Errorf("official: AppID is required")
 	}
-	if strings.TrimSpace(config.AppSecret) == "" && optsState.credentialProvider == nil {
+	if strings.TrimSpace(config.AppSecret) == "" &&
+		optsState.credentialProvider == nil &&
+		optsState.credentialManager == nil {
 		return nil, fmt.Errorf("official: AppSecret is required without a credential provider")
 	}
 	baseURL := optsState.baseURL
@@ -50,15 +52,18 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 		cache = corecache.NewMemory()
 	}
 	client := &Client{config: config, transport: tr}
-	provider := optsState.credentialProvider
-	if provider == nil {
-		provider = auth.ProviderFunc(client.fetchToken)
+	client.auth = optsState.credentialManager
+	if client.auth == nil {
+		provider := optsState.credentialProvider
+		if provider == nil {
+			provider = auth.ProviderFunc(client.fetchToken)
+		}
+		identity := optsState.credentialIdentity
+		if identity == "" {
+			identity = config.AppID
+		}
+		client.auth = auth.NewManager("official", identity, cache, provider)
 	}
-	identity := optsState.credentialIdentity
-	if identity == "" {
-		identity = config.AppID
-	}
-	client.auth = auth.NewManager("official", identity, cache, provider)
 	client.oauth = oauth.NewClient(tr, config.AppID, config.AppSecret)
 	client.users = user.NewClient(tr, client.auth)
 	return client, nil

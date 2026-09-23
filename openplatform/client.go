@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/goairix/wx/v2/core/cache"
 	"github.com/goairix/wx/v2/core/transport"
@@ -22,13 +23,16 @@ const defaultBaseURL = "https://api.weixin.qq.com"
 
 // Client is a WeChat Open Platform component client.
 type Client struct {
-	config      Config
-	transport   *transport.Client
-	cache       cache.Cache
-	component   *component.Client
-	authorizers *authorizer.Client
-	code        *code.Client
-	templates   *template.Client
+	config        Config
+	transport     *transport.Client
+	cache         cache.Cache
+	component     *component.Client
+	authorizers   *authorizer.Client
+	code          *code.Client
+	templates     *template.Client
+	mu            sync.Mutex
+	credentials   map[string]*authorizerCredential
+	refreshTokens RefreshTokenStore
 }
 
 // NewClient constructs an Open Platform client without making network calls.
@@ -50,11 +54,7 @@ func NewClient(config Config, options ...Option) (*Client, error) {
 	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
-	transportClient := transport.New(
-		settings.httpClient,
-		baseURL,
-		settings.retry,
-	)
+	transportClient := transport.New(settings.httpClient, baseURL, settings.retry)
 	transportClient.Hook = settings.hook
 	store := settings.cache
 	if store == nil {
@@ -62,9 +62,11 @@ func NewClient(config Config, options ...Option) (*Client, error) {
 	}
 
 	client := &Client{
-		config:    config,
-		transport: transportClient,
-		cache:     store,
+		config:        config,
+		transport:     transportClient,
+		cache:         store,
+		credentials:   make(map[string]*authorizerCredential),
+		refreshTokens: settings.refreshTokens,
 	}
 	componentIdentity := credentialIdentity("component", config.AppID)
 	ticketIdentity := credentialIdentity("verify-ticket", config.AppID)
@@ -114,11 +116,7 @@ func (c *Client) Templates() *template.Client {
 }
 
 // AcceptVerifyTicket stores a verified ticket event for this component.
-func (c *Client) AcceptVerifyTicket(
-	ctx context.Context,
-	componentAppID string,
-	ticket string,
-) error {
+func (c *Client) AcceptVerifyTicket(ctx context.Context, componentAppID, ticket string) error {
 	if componentAppID != c.config.AppID {
 		return fmt.Errorf("openplatform: ticket component AppID does not match config")
 	}
@@ -127,16 +125,8 @@ func (c *Client) AcceptVerifyTicket(
 
 // AuthorizedOfficial constructs an official account client that obtains its
 // server credential through this Open Platform component.
-func (c *Client) AuthorizedOfficial(
-	appID string,
-	refreshToken string,
-) (*official.Client, error) {
-	identity := credentialIdentity(
-		"official-authorizer",
-		c.config.AppID,
-		appID,
-		refreshToken,
-	)
+func (c *Client) AuthorizedOfficial(appID, refreshToken string) (*official.Client, error) {
+	manager := c.authorizerManager(appID, refreshToken)
 	return official.NewClient(
 		official.Config{
 			AppID:          appID,
@@ -145,25 +135,14 @@ func (c *Client) AuthorizedOfficial(
 		},
 		official.WithTransport(c.transport),
 		official.WithCache(c.cache),
-		official.WithCredentialProvider(
-			identity,
-			c.authorizerProvider(appID, refreshToken),
-		),
+		official.WithCredentialManager(manager),
 	)
 }
 
 // AuthorizedMiniApp constructs a miniapp client that obtains its server
 // credential through this Open Platform component.
-func (c *Client) AuthorizedMiniApp(
-	appID string,
-	refreshToken string,
-) (*miniapp.Client, error) {
-	identity := credentialIdentity(
-		"miniapp-authorizer",
-		c.config.AppID,
-		appID,
-		refreshToken,
-	)
+func (c *Client) AuthorizedMiniApp(appID, refreshToken string) (*miniapp.Client, error) {
+	manager := c.authorizerManager(appID, refreshToken)
 	return miniapp.NewClient(
 		miniapp.Config{
 			AppID:          appID,
@@ -172,10 +151,7 @@ func (c *Client) AuthorizedMiniApp(
 		},
 		miniapp.WithTransport(c.transport),
 		miniapp.WithCache(c.cache),
-		miniapp.WithCredentialProvider(
-			identity,
-			c.authorizerProvider(appID, refreshToken),
-		),
+		miniapp.WithCredentialManager(manager),
 	)
 }
 
@@ -186,7 +162,5 @@ func (c *Client) WorkAuthorizer() *workauthorizer.Client {
 }
 
 func mapValues(key, value string) url.Values {
-	return url.Values{
-		key: {value},
-	}
+	return url.Values{key: {value}}
 }

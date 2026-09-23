@@ -42,7 +42,7 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 	if strings.TrimSpace(config.AppID) == "" {
 		return nil, fmt.Errorf("miniapp: AppID is required")
 	}
-	if strings.TrimSpace(config.AppSecret) == "" && state.provider == nil {
+	if strings.TrimSpace(config.AppSecret) == "" && state.provider == nil && state.manager == nil {
 		return nil, fmt.Errorf("miniapp: AppSecret is required without a credential provider")
 	}
 	base := state.baseURL
@@ -59,15 +59,18 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 	if cc == nil {
 		cc = corecache.NewMemory()
 	}
-	provider := state.provider
-	if provider == nil {
-		provider = authpkg.ProviderFunc(c.fetchToken)
+	c.token = state.manager
+	if c.token == nil {
+		provider := state.provider
+		if provider == nil {
+			provider = authpkg.ProviderFunc(c.fetchToken)
+		}
+		identity := state.identity
+		if identity == "" {
+			identity = config.AppID
+		}
+		c.token = authpkg.NewManager("miniapp", identity, cc, provider)
 	}
-	identity := state.identity
-	if identity == "" {
-		identity = config.AppID
-	}
-	c.token = authpkg.NewManager("miniapp", identity, cc, provider)
 	c.auth = auth.New(tr, auth.Config{AppID: config.AppID, AppSecret: config.AppSecret})
 	c.users = user.New(tr, c.token)
 	c.messages = message.New(tr, c.token)

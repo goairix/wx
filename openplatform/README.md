@@ -50,6 +50,27 @@ credential, err := client.Component().Token(ctx)
 组件 token 与授权方 token 使用不同的缓存命名空间。缓存 key 使用凭证身份摘要，
 不会写入 AppSecret 或 authorizer refresh token 明文。
 
+微信可能在刷新授权方 access token 时返回新的 refresh token。客户端会立即在进程内切换到新 token。
+生产环境应通过 `WithRefreshTokenStore` 持久化它，供进程重启后继续使用：
+
+```go
+client, err := openplatform.NewClient(
+    config,
+    openplatform.WithRefreshTokenStore(
+        openplatform.RefreshTokenStoreFunc(func(
+            ctx context.Context,
+            authorizerAppID string,
+            refreshToken string,
+        ) error {
+            return repository.SaveRefreshToken(ctx, authorizerAppID, refreshToken)
+        }),
+    ),
+)
+```
+
+同一开放平台客户端中，`Code().ForAuthorizer`、`AuthorizedOfficial` 和
+`AuthorizedMiniApp` 对相同授权身份复用同一个凭证管理器，并发请求只触发一次 token 刷新。
+
 ## 账号授权
 
 ```go

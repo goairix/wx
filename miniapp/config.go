@@ -26,46 +26,35 @@ type option struct {
 	transport  *transport.Client
 	provider   auth.Provider
 	identity   string
+	manager    *auth.Manager
 }
 
 // Option customizes a miniapp client.
 type Option func(*option)
 
 func WithHTTPClient(c *http.Client) Option {
-	return func(o *option) {
-		o.httpClient = c
-	}
+	return func(o *option) { o.httpClient = c }
 }
 
 func WithBaseURL(v string) Option {
-	return func(o *option) {
-		o.baseURL = v
-	}
+	return func(o *option) { o.baseURL = v }
 }
 
 func WithCache(c corecache.Cache) Option {
-	return func(o *option) {
-		o.cache = c
-	}
+	return func(o *option) { o.cache = c }
 }
 
 func WithRetryPolicy(p transport.RetryPolicy) Option {
-	return func(o *option) {
-		o.retry = p
-	}
+	return func(o *option) { o.retry = p }
 }
 
 func WithHook(h observability.Hook) Option {
-	return func(o *option) {
-		o.hook = h
-	}
+	return func(o *option) { o.hook = h }
 }
 
 // WithTransport reuses an existing core transport.
 func WithTransport(client *transport.Client) Option {
-	return func(o *option) {
-		o.transport = client
-	}
+	return func(o *option) { o.transport = client }
 }
 
 // WithCredentialProvider configures externally managed server credentials.
@@ -74,4 +63,9 @@ func WithCredentialProvider(identity string, provider auth.Provider) Option {
 		o.identity = identity
 		o.provider = provider
 	}
+}
+
+// WithCredentialManager reuses an existing credential manager.
+func WithCredentialManager(manager *auth.Manager) Option {
+	return func(o *option) { o.manager = manager }
 }
