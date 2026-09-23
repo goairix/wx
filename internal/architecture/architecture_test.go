@@ -18,6 +18,7 @@ var legacyRoots = []string{
 	"app",
 	"base",
 	"kernel",
+	"health_card",
 	"mini_program",
 	"open_platform",
 	"open_work",

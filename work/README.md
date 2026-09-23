@@ -115,11 +115,11 @@ session, err := client.MiniApp().Session(ctx, jsCode)
 `Webhook().Handler` 处理 URL 验证、明文回调和 AES 加密回调。请求的 context 会原样传给业务 handler。
 
 ```go
-handler := client.Webhook().Handler(corewebhook.HandlerFunc(func(
+handler := client.Webhook().Handler(webhook.HandlerFunc(func(
     ctx context.Context,
-    payload corewebhook.Payload,
+    event webhook.Event,
 ) (corewebhook.Response, error) {
-    log.Printf("event=%s", payload.Values["Event"])
+    log.Printf("event=%s", event.Event)
     return corewebhook.EmptyResponse(), nil
 }))
 

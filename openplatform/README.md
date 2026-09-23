@@ -29,15 +29,23 @@ if err != nil {
 
 ## 接收 component_verify_ticket
 
-开放平台会定时推送 `component_verify_ticket`。调用方应先使用 `core/webhook` 校验签名并解密，
-确认事件中的组件 AppID 后再存储 ticket：
+开放平台会定时推送 `component_verify_ticket`。`client.Webhook()` 会校验签名、解密消息并解析 typed event；业务 handler 确认事件类型后存储 ticket：
 
 ```go
-err := client.AcceptVerifyTicket(
-    ctx,
-    event.AppID,
-    event.ComponentVerifyTicket,
-)
+handler := client.Webhook().Handler(webhook.HandlerFunc(func(
+    ctx context.Context,
+    event webhook.Event,
+) (corewebhook.Response, error) {
+    if event.InfoType != "component_verify_ticket" {
+        return corewebhook.EmptyResponse(), nil
+    }
+    err := client.AcceptVerifyTicket(
+        ctx,
+        event.AppID,
+        event.ComponentVerifyTicket,
+    )
+    return corewebhook.EmptyResponse(), err
+}))
 ```
 
 组件 AppID 不匹配或 ticket 为空时，方法会拒绝写入。组件 access token 在首次调用时获取，
