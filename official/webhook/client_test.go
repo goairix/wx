@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	corewebhook "github.com/goairix/wx/v2/core/webhook"
+	"github.com/goairix/wx/v2/internal/testkit"
 )
 
 type contextKey string
@@ -21,7 +22,11 @@ func TestHandlerDecodesTypedEventAndPreservesContext(t *testing.T) {
 		if ctx.Value(contextKey("request")) != "value" {
 			t.Fatal("request context was not propagated")
 		}
-		if event.MessageType != "event" || event.Event != "subscribe" {
+		if event.MessageType != "event" ||
+			event.Event != "subscribe" ||
+			event.MediaID != "media-one" ||
+			event.MenuID != "menu-one" ||
+			event.Status != "success" {
 			t.Fatalf("event = %#v", event)
 		}
 		return corewebhook.Response{Body: []byte("success")}, nil
@@ -31,7 +36,11 @@ func TestHandlerDecodesTypedEventAndPreservesContext(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPost,
 		target,
-		strings.NewReader(`<xml><MsgType>event</MsgType><Event>subscribe</Event></xml>`),
+		strings.NewReader(
+			`<xml><MsgType>event</MsgType><Event>subscribe</Event>`+
+				`<MediaId>media-one</MediaId><MenuId>menu-one</MenuId>`+
+				`<Status>success</Status></xml>`,
+		),
 	)
 	request = request.WithContext(context.WithValue(
 		request.Context(),
@@ -43,4 +52,23 @@ func TestHandlerDecodesTypedEventAndPreservesContext(t *testing.T) {
 	if response.Code != http.StatusOK || response.Body.String() != "success" {
 		t.Fatalf("response = %d %q", response.Code, response.Body.String())
 	}
+}
+
+func TestOfficialWebhookContract(t *testing.T) {
+	testkit.VerifyWebhookContract(t, func(
+		receiverID string,
+		token string,
+		encodingAESKey string,
+		next corewebhook.Handler,
+		policy corewebhook.ErrorResponse,
+	) http.Handler {
+		options := make([]Option, 0, 1)
+		if policy != nil {
+			options = append(options, WithErrorResponse(policy))
+		}
+		return NewClient(receiverID, token, encodingAESKey).RawHandler(
+			next,
+			options...,
+		)
+	})
 }

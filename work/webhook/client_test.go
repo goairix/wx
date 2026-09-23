@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	corewebhook "github.com/goairix/wx/v2/core/webhook"
+	"github.com/goairix/wx/v2/internal/testkit"
 )
 
 type contextKey string
@@ -222,6 +223,78 @@ func TestHandlerRejectsInvalidEncodingAESKey(t *testing.T) {
 	}
 	if nextCalls != 0 {
 		t.Fatalf("next handler called %d times", nextCalls)
+	}
+}
+
+func TestWorkWebhookContract(t *testing.T) {
+	testkit.VerifyWebhookContract(t, func(
+		receiverID string,
+		token string,
+		encodingAESKey string,
+		next corewebhook.Handler,
+		policy corewebhook.ErrorResponse,
+	) http.Handler {
+		options := make([]Option, 0, 1)
+		if policy != nil {
+			options = append(options, WithErrorResponse(policy))
+		}
+		return NewClient(receiverID, token, encodingAESKey).RawHandler(
+			next,
+			options...,
+		)
+	})
+}
+
+func TestHandlerProvidesSpecializedEnterpriseEvents(t *testing.T) {
+	client := NewClient("corp", "token", "")
+	handler := client.Handler(HandlerFunc(func(
+		ctx context.Context,
+		event Event,
+	) (corewebhook.Response, error) {
+		external := event.ExternalContactChange()
+		if external.Source != "search" || external.FailReason != "quota" {
+			t.Fatalf("external contact = %#v", external)
+		}
+		group := event.GroupChatChange()
+		if group.QuitScene != 2 || group.MemberChangeCount != 3 {
+			t.Fatalf("group chat = %#v", group)
+		}
+		tag := event.ExternalTagChange()
+		if tag.TagID != "tag-one" || tag.TagType != "corp" {
+			t.Fatalf("tag = %#v", tag)
+		}
+		card := event.TemplateCard()
+		if card.TaskID != "task-one" ||
+			len(card.SelectedItems.Items) != 1 {
+			t.Fatalf("template card = %#v", card)
+		}
+		living := event.LivingStatusChange()
+		if living.LivingID != "living-one" || living.Status != 4 {
+			t.Fatalf("living = %#v", living)
+		}
+		approval := event.Approval()
+		if approval.ApprovalInfo.Number != "approval-one" {
+			t.Fatalf("approval = %#v", approval)
+		}
+		return corewebhook.EmptyResponse(), nil
+	}))
+	body := `<xml><Event>change_external_contact</Event>` +
+		`<Source>search</Source><FailReason>quota</FailReason>` +
+		`<QuitScene>2</QuitScene><MemChangeCnt>3</MemChangeCnt>` +
+		`<TagId>tag-one</TagId><TagType>corp</TagType>` +
+		`<TaskId>task-one</TaskId><SelectedItems><SelectedItem>` +
+		`<QuestionKey>question</QuestionKey></SelectedItem></SelectedItems>` +
+		`<LivingId>living-one</LivingId><Status>4</Status>` +
+		`<ApprovalInfo><SpNo>approval-one</SpNo></ApprovalInfo></xml>`
+	target := "/callback?timestamp=100&nonce=nonce&signature=" +
+		corewebhook.Signature("token", "100", "nonce")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(
+		response,
+		httptest.NewRequest(http.MethodPost, target, strings.NewReader(body)),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("response = %d %q", response.Code, response.Body.String())
 	}
 }
 

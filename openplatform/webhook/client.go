@@ -18,6 +18,15 @@ type Event struct {
 	AuthorizationCode            string `xml:"AuthorizationCode" json:"AuthorizationCode"`
 	AuthorizationCodeExpiredTime int64  `xml:"AuthorizationCodeExpiredTime" json:"AuthorizationCodeExpiredTime"`
 	PreAuthCode                  string `xml:"PreAuthCode" json:"PreAuthCode"`
+	Ret                          int    `xml:"ret" json:"ret"`
+	Nickname                     string `xml:"nickname" json:"nickname"`
+	Reason                       string `xml:"reason" json:"reason"`
+	First                        int64  `xml:"first" json:"first"`
+	Second                       int64  `xml:"second" json:"second"`
+	SuccessTime                  int64  `xml:"SuccTime" json:"SuccTime"`
+	FailTime                     int64  `xml:"FailTime" json:"FailTime"`
+	DelayTime                    int64  `xml:"DelayTime" json:"DelayTime"`
+	ScreenShot                   string `xml:"ScreenShot" json:"ScreenShot"`
 }
 
 // Handler processes a typed Open Platform event.

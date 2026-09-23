@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	corewebhook "github.com/goairix/wx/v2/core/webhook"
+	"github.com/goairix/wx/v2/internal/testkit"
 )
 
 func TestHandlerDecodesComponentEventAndUsesErrorPolicy(t *testing.T) {
@@ -19,7 +20,9 @@ func TestHandlerDecodesComponentEventAndUsesErrorPolicy(t *testing.T) {
 			event Event,
 		) (corewebhook.Response, error) {
 			if event.InfoType != "component_verify_ticket" ||
-				event.ComponentVerifyTicket != "ticket-one" {
+				event.ComponentVerifyTicket != "ticket-one" ||
+				event.Ret != 1 ||
+				event.ScreenShot != "image-one" {
 				t.Fatalf("event = %#v", event)
 			}
 			return corewebhook.Response{}, errors.New("retry callback")
@@ -38,7 +41,8 @@ func TestHandlerDecodesComponentEventAndUsesErrorPolicy(t *testing.T) {
 		target,
 		strings.NewReader(
 			`<xml><InfoType>component_verify_ticket</InfoType>`+
-				`<ComponentVerifyTicket>ticket-one</ComponentVerifyTicket></xml>`,
+				`<ComponentVerifyTicket>ticket-one</ComponentVerifyTicket>`+
+				`<ret>1</ret><ScreenShot>image-one</ScreenShot></xml>`,
 		),
 	)
 	response := httptest.NewRecorder()
@@ -46,4 +50,23 @@ func TestHandlerDecodesComponentEventAndUsesErrorPolicy(t *testing.T) {
 	if response.Code != http.StatusServiceUnavailable || response.Body.String() != "retry" {
 		t.Fatalf("response = %d %q", response.Code, response.Body.String())
 	}
+}
+
+func TestOpenPlatformWebhookContract(t *testing.T) {
+	testkit.VerifyWebhookContract(t, func(
+		receiverID string,
+		token string,
+		encodingAESKey string,
+		next corewebhook.Handler,
+		policy corewebhook.ErrorResponse,
+	) http.Handler {
+		options := make([]Option, 0, 1)
+		if policy != nil {
+			options = append(options, WithErrorResponse(policy))
+		}
+		return NewClient(receiverID, token, encodingAESKey).RawHandler(
+			next,
+			options...,
+		)
+	})
 }
