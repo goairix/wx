@@ -118,6 +118,113 @@ func TestHandlerDecryptsPOSTAndUsesErrorPolicy(t *testing.T) {
 	}
 }
 
+func TestHandlerRejectsEmptyTokenBeforeDispatch(t *testing.T) {
+	key := bytes.Repeat([]byte("k"), 32)
+	encodedKey := strings.TrimRight(base64.StdEncoding.EncodeToString(key), "=")
+	client := NewClient("corp", "", encodedKey)
+	nextCalls := 0
+	next := corewebhook.HandlerFunc(func(
+		ctx context.Context,
+		payload corewebhook.Payload,
+	) (corewebhook.Response, error) {
+		nextCalls++
+		return corewebhook.EmptyResponse(), nil
+	})
+	handler := client.Handler(
+		next,
+		WithErrorResponse(func(err error) corewebhook.Response {
+			if !strings.Contains(err.Error(), "token is required") {
+				t.Errorf("configuration error = %v", err)
+			}
+			return corewebhook.Response{
+				Status: http.StatusTeapot,
+				Body:   []byte("closed"),
+			}
+		}),
+	)
+	plainBody := `<xml><Event>change_contact</Event></xml>`
+	encrypted := encryptFixture(t, key, []byte(plainBody), "corp")
+	encryptedBody := fmt.Sprintf(
+		`<xml><Encrypt><![CDATA[%s]]></Encrypt></xml>`,
+		encrypted,
+	)
+	tests := []struct {
+		name   string
+		method string
+		target string
+		body   string
+	}{
+		{
+			name:   "URL verification",
+			method: http.MethodGet,
+			target: "/callback?timestamp=100&nonce=nonce&echostr=echo&signature=" +
+				corewebhook.Signature("", "100", "nonce"),
+		},
+		{
+			name:   "plain callback",
+			method: http.MethodPost,
+			target: "/callback?timestamp=100&nonce=nonce&signature=" +
+				corewebhook.Signature("", "100", "nonce"),
+			body: plainBody,
+		},
+		{
+			name:   "encrypted callback",
+			method: http.MethodPost,
+			target: "/callback?timestamp=100&nonce=nonce&msg_signature=" +
+				corewebhook.MessageSignature("", "100", "nonce", encrypted),
+			body: encryptedBody,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(
+				test.method,
+				test.target,
+				strings.NewReader(test.body),
+			)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusTeapot || response.Body.String() != "closed" {
+				t.Fatalf("response = %d %q", response.Code, response.Body.String())
+			}
+		})
+	}
+	if nextCalls != 0 {
+		t.Fatalf("next handler called %d times", nextCalls)
+	}
+}
+
+func TestHandlerRejectsInvalidEncodingAESKey(t *testing.T) {
+	client := NewClient("corp", "token", "invalid")
+	nextCalls := 0
+	handler := client.Handler(
+		corewebhook.HandlerFunc(func(
+			ctx context.Context,
+			payload corewebhook.Payload,
+		) (corewebhook.Response, error) {
+			nextCalls++
+			return corewebhook.EmptyResponse(), nil
+		}),
+		WithErrorResponse(func(err error) corewebhook.Response {
+			return corewebhook.Response{Status: http.StatusUnprocessableEntity}
+		}),
+	)
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/callback?timestamp=100&nonce=nonce&signature="+
+			corewebhook.Signature("token", "100", "nonce"),
+		strings.NewReader(`<xml><Event>change_contact</Event></xml>`),
+	)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("response status = %d", response.Code)
+	}
+	if nextCalls != 0 {
+		t.Fatalf("next handler called %d times", nextCalls)
+	}
+}
+
 func encryptFixture(t *testing.T, key, message []byte, receiver string) string {
 	t.Helper()
 	plain := append([]byte{}, bytes.Repeat([]byte("r"), 16)...)

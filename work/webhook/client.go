@@ -3,10 +3,13 @@ package webhook
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	corewebhook "github.com/goairix/wx/v2/core/webhook"
 )
@@ -122,6 +125,7 @@ func (c *Client) Handler(next corewebhook.Handler, options ...Option) http.Handl
 		client:        c,
 		next:          next,
 		errorResponse: settings.errorResponse,
+		configError:   c.validate(),
 	}
 }
 
@@ -129,9 +133,14 @@ type callbackHandler struct {
 	client        *Client
 	next          corewebhook.Handler
 	errorResponse corewebhook.ErrorResponse
+	configError   error
 }
 
 func (h *callbackHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	if h.configError != nil {
+		h.writeError(writer, h.configError)
+		return
+	}
 	if request.Method == http.MethodGet {
 		h.verifyURL(writer, request)
 		return
@@ -156,6 +165,22 @@ func (h *callbackHandler) ServeHTTP(writer http.ResponseWriter, request *http.Re
 		corewebhook.WithErrorResponse(h.errorResponse),
 	)
 	delegate.ServeHTTP(writer, request)
+}
+
+func (c *Client) validate() error {
+	if c == nil || strings.TrimSpace(c.token) == "" {
+		return errors.New("work webhook: token is required")
+	}
+	if c.encodingAESKey == "" {
+		return nil
+	}
+	encodedKey := c.encodingAESKey
+	encodedKey += "==="[:(4-len(encodedKey)%4)%4]
+	key, err := base64.StdEncoding.DecodeString(encodedKey)
+	if err != nil || len(key) != 32 {
+		return errors.New("work webhook: invalid encoding AES key")
+	}
+	return nil
 }
 
 func (h *callbackHandler) verifyURL(writer http.ResponseWriter, request *http.Request) {
