@@ -10,17 +10,24 @@ import (
 	wxerrors "github.com/goairix/wx/v2/core/errors"
 	"github.com/goairix/wx/v2/core/request"
 	"github.com/goairix/wx/v2/core/transport"
+	"github.com/goairix/wx/v2/official/internal/api"
 )
 
 // Client provides official account user APIs.
 type Client struct {
 	transport *transport.Client
 	auth      *auth.Manager
+	tags      *TagClient
 }
 
 // NewClient constructs a user domain client.
 func NewClient(tr *transport.Client, manager *auth.Manager) *Client {
-	return &Client{transport: tr, auth: manager}
+	executor := api.New(tr, manager)
+	return &Client{
+		transport: tr,
+		auth:      manager,
+		tags:      &TagClient{api: executor},
+	}
 }
 
 // Info fetches a user's profile.
@@ -45,4 +52,9 @@ func (c *Client) Info(ctx context.Context, openID string) (*Info, error) {
 		return nil, &wxerrors.Error{Platform: "official", Operation: "official.user.info", HTTPStatus: meta.StatusCode, Code: fmt.Sprintf("%d", envelope.ErrCode), Message: envelope.ErrMsg, RequestID: meta.RequestID}
 	}
 	return result, nil
+}
+
+// Tags returns user tag operations.
+func (c *Client) Tags() *TagClient {
+	return c.tags
 }
