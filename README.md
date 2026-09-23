@@ -1,7 +1,7 @@
 # wx
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/goairix/wx/v2.svg)](https://pkg.go.dev/github.com/goairix/wx/v2)
-[![Go](https://img.shields.io/badge/Go-1.17%2B-00ADD8?logo=go)](https://go.dev/)
+[![Go](https://img.shields.io/badge/Go-1.23%2B-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 `wx` 是面向 Go 服务端应用的微信生态 SDK，统一封装公众号、小程序、移动应用、
@@ -34,7 +34,7 @@ SDK 以平台根客户端为入口，按业务领域组织接口，并提供统�
 
 ## 环境要求
 
-- Go 1.17 或更高版本
+- Go 1.23 或更高版本
 - 对应平台已经创建的应用，以及调用目标接口所需的权限
 
 ## 安装

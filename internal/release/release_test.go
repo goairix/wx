@@ -15,8 +15,8 @@ func TestV2ReleaseLayout(t *testing.T) {
 	if !strings.Contains(module, "module github.com/goairix/wx/v2\n") {
 		t.Fatalf("go.mod does not declare the v2 module: %q", module)
 	}
-	if !strings.Contains(module, "\ngo 1.17\n") {
-		t.Fatalf("go.mod does not preserve the Go 1.17 baseline: %q", module)
+	if !strings.Contains(module, "\ngo 1.23\n") {
+		t.Fatalf("go.mod does not declare the Go 1.23 baseline: %q", module)
 	}
 
 	required := []string{

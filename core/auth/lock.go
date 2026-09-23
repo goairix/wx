@@ -142,7 +142,7 @@ func comparableValue(value reflect.Value) bool {
 	}
 }
 
-// comparableType is the Go 1.17 equivalent of reflect.Type.Comparable.
+// comparableType reports whether values of valueType are comparable.
 func comparableType(valueType reflect.Type) bool {
 	switch valueType.Kind() {
 	case reflect.Array:
