@@ -201,3 +201,71 @@ func (c *Client) SendText(
 	err := c.api.Post(ctx, "work.kf.message.send_text", "cgi-bin/kf/send_msg", body, &result)
 	return result.MessageID, err
 }
+
+func (c *Client) SendImage(
+	ctx context.Context,
+	toUser string,
+	openKFID string,
+	mediaID string,
+	messageID string,
+) (string, error) {
+	return c.sendMedia(ctx, "image", toUser, openKFID, mediaID, messageID)
+}
+
+func (c *Client) SendVoice(
+	ctx context.Context,
+	toUser string,
+	openKFID string,
+	mediaID string,
+	messageID string,
+) (string, error) {
+	return c.sendMedia(ctx, "voice", toUser, openKFID, mediaID, messageID)
+}
+
+func (c *Client) SendVideo(
+	ctx context.Context,
+	toUser string,
+	openKFID string,
+	mediaID string,
+	messageID string,
+) (string, error) {
+	return c.sendMedia(ctx, "video", toUser, openKFID, mediaID, messageID)
+}
+
+func (c *Client) sendMedia(
+	ctx context.Context,
+	mediaType string,
+	toUser string,
+	openKFID string,
+	mediaID string,
+	messageID string,
+) (string, error) {
+	body := sendMsgRequest{
+		ToUser:   toUser,
+		OpenKfid: openKFID,
+		MsgType:  mediaType,
+		MsgId:    messageID,
+	}
+	content := &MediaContent{
+		MediaId: mediaID,
+	}
+	switch mediaType {
+	case "image":
+		body.Image = content
+	case "voice":
+		body.Voice = content
+	case "video":
+		body.Video = content
+	}
+	var result struct {
+		MessageID string `json:"msgid"`
+	}
+	err := c.api.Post(
+		ctx,
+		"work.kf.message.send_"+mediaType,
+		"cgi-bin/kf/send_msg",
+		body,
+		&result,
+	)
+	return result.MessageID, err
+}

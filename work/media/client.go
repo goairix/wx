@@ -63,11 +63,25 @@ func (c *Client) Upload(
 
 // Download downloads temporary media.
 func (c *Client) Download(ctx context.Context, mediaID string) ([]byte, string, error) {
+	return c.download(ctx, "work.media.download", "cgi-bin/media/get", mediaID)
+}
+
+// GetJSSDK downloads high-definition voice media uploaded by JSSDK.
+func (c *Client) GetJSSDK(ctx context.Context, mediaID string) ([]byte, string, error) {
+	return c.download(ctx, "work.media.get_jssdk", "cgi-bin/media/get/jssdk", mediaID)
+}
+
+func (c *Client) download(
+	ctx context.Context,
+	operation string,
+	path string,
+	mediaID string,
+) ([]byte, string, error) {
 	raw, meta, err := c.api.Raw(
 		ctx,
-		"work.media.download",
+		operation,
 		http.MethodGet,
-		"cgi-bin/media/get",
+		path,
 		url.Values{"media_id": []string{mediaID}},
 		nil,
 		nil,

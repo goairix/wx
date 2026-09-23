@@ -145,6 +145,41 @@ func TestDomainRequestsAndResponses(t *testing.T) {
 		if err != nil || len(result.AccountList) != 1 {
 			t.Fatalf("result = %#v, err = %v", result, err)
 		}
+		senders := map[string]func() (string, error){
+			"image": func() (string, error) {
+				return client.Kefu().SendImage(
+					ctx,
+					"external-one",
+					"kf-one",
+					"media-one",
+					"client-message-one",
+				)
+			},
+			"voice": func() (string, error) {
+				return client.Kefu().SendVoice(
+					ctx,
+					"external-one",
+					"kf-one",
+					"media-one",
+					"client-message-one",
+				)
+			},
+			"video": func() (string, error) {
+				return client.Kefu().SendVideo(
+					ctx,
+					"external-one",
+					"kf-one",
+					"media-one",
+					"client-message-one",
+				)
+			},
+		}
+		for mediaType, send := range senders {
+			messageID, err := send()
+			if err != nil || messageID != "kf-message-one" {
+				t.Fatalf("%s message id = %q, err = %v", mediaType, messageID, err)
+			}
+		}
 	})
 
 	t.Run("media", func(t *testing.T) {
@@ -152,12 +187,24 @@ func TestDomainRequestsAndResponses(t *testing.T) {
 		if err != nil || string(content) != "media-content" || contentType != "text/plain" {
 			t.Fatalf("content = %q, type = %q, err = %v", content, contentType, err)
 		}
+		voice, _, err := client.Media().GetJSSDK(ctx, "voice-one")
+		if err != nil || string(voice) != "voice-content" {
+			t.Fatalf("voice = %q, err = %v", voice, err)
+		}
 	})
 
 	t.Run("account id", func(t *testing.T) {
 		result, err := client.AccountID().UserIDToOpenUserID(ctx, []string{"user-one"})
 		if err != nil || len(result.Items) != 1 || result.Items[0].OpenUserID != "open-one" {
 			t.Fatalf("result = %#v, err = %v", result, err)
+		}
+		openID, err := client.AccountID().ConvertToOpenid(ctx, "user-one")
+		if err != nil || openID != "openid-one" {
+			t.Fatalf("openid = %q, err = %v", openID, err)
+		}
+		userID, err := client.AccountID().ConvertToUserid(ctx, "openid-one")
+		if err != nil || userID != "user-one" {
+			t.Fatalf("userid = %q, err = %v", userID, err)
 		}
 	})
 
@@ -169,7 +216,11 @@ func TestDomainRequestsAndResponses(t *testing.T) {
 	})
 
 	t.Run("authorizer", func(t *testing.T) {
-		result, err := client.Authorizer().PermanentCode(ctx, "temporary-code")
+		result, err := client.Authorizer().PermanentCode(
+			ctx,
+			"suite-token",
+			"temporary-code",
+		)
 		if err != nil || result.PermanentCode != "permanent-code" {
 			t.Fatalf("result = %#v, err = %v", result, err)
 		}
@@ -240,7 +291,7 @@ func TestDomainPlatformError(t *testing.T) {
 			return err
 		},
 		"authorizer": func() error {
-			_, err := client.Authorizer().PermanentCode(ctx, "code")
+			_, err := client.Authorizer().PermanentCode(ctx, "suite-token", "code")
 			return err
 		},
 	}
@@ -260,7 +311,8 @@ func TestDomainPlatformError(t *testing.T) {
 
 func domainFixture(t *testing.T) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/cgi-bin/gettoken" && request.URL.Query().Get("access_token") != "token" {
+		isAuthorizer := request.URL.Path == "/cgi-bin/service/get_permanent_code"
+		if request.URL.Path != "/cgi-bin/gettoken" && !isAuthorizer && request.URL.Query().Get("access_token") != "token" {
 			t.Errorf("missing access token: %s", request.URL)
 		}
 		switch request.URL.Path {
@@ -281,14 +333,52 @@ func domainFixture(t *testing.T) http.HandlerFunc {
 			_, _ = writer.Write([]byte(`{"errcode":0,"msgid":"message-one"}`))
 		case "/cgi-bin/kf/account/list":
 			_, _ = writer.Write([]byte(`{"errcode":0,"account_list":[{"open_kfid":"kf-one"}]}`))
+		case "/cgi-bin/kf/send_msg":
+			body, _ := io.ReadAll(request.Body)
+			bodyText := string(body)
+			for _, expected := range []string{
+				`"media_id":"media-one"`,
+				`"msgid":"client-message-one"`,
+			} {
+				if !strings.Contains(bodyText, expected) {
+					t.Errorf("customer service body %q does not contain %q", bodyText, expected)
+				}
+			}
+			matchedType := false
+			for _, mediaType := range []string{"image", "voice", "video"} {
+				if strings.Contains(bodyText, `"msgtype":"`+mediaType+`"`) {
+					matchedType = strings.Contains(bodyText, `"`+mediaType+`":`)
+					break
+				}
+			}
+			if !matchedType {
+				t.Errorf("customer service body has no matching media payload: %s", bodyText)
+			}
+			_, _ = writer.Write([]byte(`{"errcode":0,"msgid":"kf-message-one"}`))
 		case "/cgi-bin/media/get":
 			writer.Header().Set("Content-Type", "text/plain")
 			_, _ = writer.Write([]byte("media-content"))
+		case "/cgi-bin/media/get/jssdk":
+			if request.URL.Query().Get("media_id") != "voice-one" {
+				t.Errorf("media query = %s", request.URL.RawQuery)
+			}
+			writer.Header().Set("Content-Type", "audio/amr")
+			_, _ = writer.Write([]byte("voice-content"))
 		case "/cgi-bin/batch/userid_to_openuserid":
 			_, _ = writer.Write([]byte(`{"errcode":0,"open_userid_list":[{"userid":"user-one","open_userid":"open-one"}]}`))
+		case "/cgi-bin/user/convert_to_openid":
+			_, _ = writer.Write([]byte(`{"errcode":0,"openid":"openid-one"}`))
+		case "/cgi-bin/user/convert_to_userid":
+			_, _ = writer.Write([]byte(`{"errcode":0,"userid":"user-one"}`))
 		case "/cgi-bin/miniprogram/jscode2session":
 			_, _ = writer.Write([]byte(`{"errcode":0,"corpid":"corp","userid":"user-one","session_key":"key"}`))
 		case "/cgi-bin/service/get_permanent_code":
+			if request.URL.Query().Get("suite_access_token") != "suite-token" {
+				t.Errorf("suite token query = %s", request.URL.RawQuery)
+			}
+			if request.URL.Query().Get("access_token") != "" {
+				t.Errorf("unexpected access_token query = %s", request.URL.RawQuery)
+			}
 			_, _ = writer.Write([]byte(`{"errcode":0,"permanent_code":"permanent-code"}`))
 		case "/cgi-bin/auth/getuserinfo":
 			_, _ = writer.Write([]byte(`{"errcode":0,"UserId":"user-one"}`))

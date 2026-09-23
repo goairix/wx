@@ -3,16 +3,24 @@ package authorizer
 
 import (
 	"context"
+	"net/http"
+	"net/url"
+	"strconv"
 
+	wxerrors "github.com/goairix/wx/v2/core/errors"
+	"github.com/goairix/wx/v2/core/request"
+	"github.com/goairix/wx/v2/core/transport"
 	"github.com/goairix/wx/v2/work/internal/api"
 )
 
 // Client provides authorized enterprise APIs.
-type Client struct{ api *api.Client }
+type Client struct {
+	transport *transport.Client
+}
 
 func NewClient(executor *api.Client) *Client {
 	return &Client{
-		api: executor,
+		transport: executor.Transport,
 	}
 }
 
@@ -26,6 +34,7 @@ type PermanentCodeResult struct {
 // PermanentCode exchanges a temporary authorization code.
 func (c *Client) PermanentCode(
 	ctx context.Context,
+	suiteAccessToken string,
 	temporaryCode string,
 ) (*PermanentCodeResult, error) {
 	body := struct {
@@ -34,12 +43,37 @@ func (c *Client) PermanentCode(
 		AuthCode: temporaryCode,
 	}
 	result := new(PermanentCodeResult)
-	err := c.api.Post(
-		ctx,
-		"work.authorizer.permanent_code",
-		"cgi-bin/service/get_permanent_code",
-		body,
-		result,
-	)
+	meta := new(request.ResponseMeta)
+	var response struct {
+		*PermanentCodeResult
+		ErrCode int    `json:"errcode"`
+		ErrMsg  string `json:"errmsg"`
+	}
+	response.PermanentCodeResult = result
+	err := c.transport.Do(ctx, request.Request{
+		Operation: "work.authorizer.permanent_code",
+		Platform:  "work",
+		Method:    http.MethodPost,
+		Path:      "cgi-bin/service/get_permanent_code",
+		Query: url.Values{
+			"suite_access_token": []string{suiteAccessToken},
+		},
+		Body:   body,
+		Result: &response,
+		Meta:   meta,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if response.ErrCode != 0 {
+		return nil, &wxerrors.Error{
+			Platform:   "work",
+			Operation:  "work.authorizer.permanent_code",
+			HTTPStatus: meta.StatusCode,
+			Code:       strconv.Itoa(response.ErrCode),
+			Message:    response.ErrMsg,
+			RequestID:  meta.RequestID,
+		}
+	}
 	return result, err
 }
