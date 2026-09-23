@@ -19,10 +19,15 @@ func ParsePlatformError(platform, operation string, status int, body []byte, req
 	}
 
 	var payload struct {
-		ErrCode json.RawMessage `json:"errcode"`
-		Code    json.RawMessage `json:"code"`
-		ErrMsg  string          `json:"errmsg"`
-		Message string          `json:"message"`
+		ErrCode   json.RawMessage `json:"errcode"`
+		Code      json.RawMessage `json:"code"`
+		ErrMsg    string          `json:"errmsg"`
+		Message   string          `json:"message"`
+		CommonOut struct {
+			RequestID  string          `json:"requestId"`
+			ResultCode json.RawMessage `json:"resultCode"`
+			ErrMsg     string          `json:"errMsg"`
+		} `json:"commonOut"`
 	}
 	if decodeErr := json.Unmarshal(body, &payload); decodeErr != nil {
 		err.Err = fmt.Errorf("parse platform error response: %w", decodeErr)
@@ -38,11 +43,19 @@ func ParsePlatformError(platform, operation string, status int, body []byte, req
 	if len(code) == 0 || string(code) == "null" {
 		code = payload.Code
 	}
+	if len(code) == 0 || string(code) == "null" {
+		code = payload.CommonOut.ResultCode
+	}
 	err.Code = rawValueString(code)
 	if payload.ErrMsg != "" {
 		err.Message = payload.ErrMsg
+	} else if payload.CommonOut.ErrMsg != "" {
+		err.Message = payload.CommonOut.ErrMsg
 	} else {
 		err.Message = payload.Message
+	}
+	if err.RequestID == "" {
+		err.RequestID = payload.CommonOut.RequestID
 	}
 	return err
 }

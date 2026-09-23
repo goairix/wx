@@ -57,6 +57,21 @@ func TestParsePlatformError(t *testing.T) {
 	}
 }
 
+func TestParsePlatformErrorSupportsHealthcardEnvelope(t *testing.T) {
+	err := ParsePlatformError(
+		"healthcard",
+		"register",
+		400,
+		[]byte(`{"commonOut":{"requestId":"health-rid","resultCode":4002,"errMsg":"invalid signature"}}`),
+		"",
+	)
+	if err.Code != "4002" ||
+		err.Message != "invalid signature" ||
+		err.RequestID != "health-rid" {
+		t.Fatalf("healthcard error = %#v", err)
+	}
+}
+
 func TestParsePlatformErrorMalformedBody(t *testing.T) {
 	err := ParsePlatformError("official", "token", 502, []byte("not-json"), "rid-3")
 	if err == nil {

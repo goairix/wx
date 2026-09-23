@@ -131,9 +131,50 @@ func TestCanceledContextStopsBeforeSigningAndSending(t *testing.T) {
 	}
 }
 
+func TestCanceledContextStopsAfterAppTokenLookup(t *testing.T) {
+	var requests int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requests, 1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	provider := auth.ProviderFunc(func(context.Context) (auth.Credential, error) {
+		cancel()
+		return auth.Credential{AccessToken: "token"}, nil
+	})
+	var requestIDs int32
+	client, err := NewClient(
+		testConfig(),
+		WithBaseURL(server.URL),
+		WithCredentialProvider(provider),
+		WithRequestID(func() string {
+			atomic.AddInt32(&requestIDs, 1)
+			return "rid"
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = client.Call(ctx, "/cancel-after-token", struct{}{}, &struct{}{})
+	if !stderrors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+	if got := atomic.LoadInt32(&requestIDs); got != 0 {
+		t.Fatalf("request IDs generated = %d, want 0", got)
+	}
+	if got := atomic.LoadInt32(&requests); got != 0 {
+		t.Fatalf("domain requests sent = %d, want 0", got)
+	}
+}
+
 func TestPlatformErrorKeepsHealthcardMetadata(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"commonOut":{"requestId":"health-rid","resultCode":4001,"errMsg":"invalid card"},"rsp":null}`))
+		_, _ = w.Write(
+			[]byte(`{"commonOut":{"requestId":"health-rid","resultCode":4001,"errMsg":"invalid card"},"rsp":null}`),
+		)
 	}))
 	defer server.Close()
 
@@ -155,6 +196,37 @@ func TestPlatformErrorKeepsHealthcardMetadata(t *testing.T) {
 		platformErr.Code != "4001" ||
 		platformErr.Message != "invalid card" ||
 		platformErr.RequestID != "health-rid" {
+		t.Fatalf("unexpected platform error: %+v", platformErr)
+	}
+}
+
+func TestHTTPErrorKeepsHealthcardEnvelopeMetadata(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write(
+			[]byte(`{"commonOut":{"requestId":"health-http-rid","resultCode":4002,"errMsg":"invalid signature"},"rsp":null}`),
+		)
+	}))
+	defer server.Close()
+
+	client, err := NewClient(
+		testConfig(),
+		WithBaseURL(server.URL),
+		WithAppToken("token"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = client.Call(context.Background(), "/cards", struct{}{}, &struct{}{})
+
+	var platformErr *wxerrors.Error
+	if !stderrors.As(err, &platformErr) {
+		t.Fatalf("error type = %T, want *core/errors.Error", err)
+	}
+	if platformErr.HTTPStatus != http.StatusBadRequest ||
+		platformErr.Code != "4002" ||
+		platformErr.Message != "invalid signature" ||
+		platformErr.RequestID != "health-http-rid" {
 		t.Fatalf("unexpected platform error: %+v", platformErr)
 	}
 }

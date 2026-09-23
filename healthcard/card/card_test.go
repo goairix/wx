@@ -15,7 +15,13 @@ func (f *fakeCaller) Call(ctx context.Context, path string, req interface{}, res
 	f.path, f.req = path, req
 	return json.Unmarshal([]byte(`{"healthCardId":"hc"}`), result)
 }
-func (f *fakeCaller) CallWithRelated(ctx context.Context, path string, req interface{}, result interface{}, relateOpenID string) error {
+func (f *fakeCaller) CallWithRelated(
+	ctx context.Context,
+	path string,
+	req interface{},
+	result interface{},
+	relateOpenID string,
+) error {
 	return f.Call(ctx, path, req, result)
 }
 
