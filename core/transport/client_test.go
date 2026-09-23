@@ -409,6 +409,74 @@ func TestClientEncodesJSONBodyWithoutHTMLEscaping(t *testing.T) {
 	}
 }
 
+func TestClientPropagatesContextToHook(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	type contextKey struct{}
+	ctx := context.WithValue(context.Background(), contextKey{}, "trace-sentinel")
+	var events []observability.Event
+	client := New(
+		server.Client(),
+		server.URL,
+		RetryPolicy{},
+		WithHook(observability.HookFunc(func(event observability.Event) {
+			events = append(events, event)
+		})),
+	)
+
+	if err := client.Do(ctx, request.Request{
+		Operation: "test.context-hook",
+		Method:    http.MethodGet,
+		Path:      "/",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("hook event count = %d, want 2", len(events))
+	}
+	for index, event := range events {
+		if event.Context != ctx {
+			t.Errorf("event %d context was not propagated", index)
+		}
+		if got := event.Context.Value(contextKey{}); got != "trace-sentinel" {
+			t.Errorf("event %d context value = %v", index, got)
+		}
+	}
+}
+
+func TestClientNormalizesNilContextForHook(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	var events []observability.Event
+	client := New(
+		server.Client(),
+		server.URL,
+		RetryPolicy{},
+		WithHook(observability.HookFunc(func(event observability.Event) {
+			events = append(events, event)
+		})),
+	)
+
+	if err := client.Do(nil, request.Request{
+		Operation: "test.nil-context-hook",
+		Method:    http.MethodGet,
+		Path:      "/",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for index, event := range events {
+		if event.Context == nil {
+			t.Errorf("event %d has nil context", index)
+		}
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

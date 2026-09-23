@@ -1,10 +1,14 @@
 // Package observability defines request instrumentation hooks.
 package observability
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // Event describes one request lifecycle event.
 type Event struct {
+	Context    context.Context
 	Operation  string
 	Platform   string
 	StatusCode int

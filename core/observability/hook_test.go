@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -8,10 +9,14 @@ import (
 
 func TestHookReceivesOperationAndRequestID(t *testing.T) {
 	var got Event
+	ctx := context.Background()
 	hook := HookFunc(func(event Event) { got = event })
-	hook.OnResponse(Event{Operation: "work.contact.user.get", StatusCode: 200, RequestID: "req-3"})
+	hook.OnResponse(Event{Context: ctx, Operation: "work.contact.user.get", StatusCode: 200, RequestID: "req-3"})
 	if got.Operation != "work.contact.user.get" || got.RequestID != "req-3" {
 		t.Fatalf("unexpected event: %+v", got)
+	}
+	if got.Context != ctx {
+		t.Fatal("hook did not preserve event context")
 	}
 }
 

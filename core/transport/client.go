@@ -151,18 +151,22 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 		started := time.Now()
 		c.logStarted(ctx, req, attempt, policy.MaxAttempts)
 		if c.hook != nil {
-			c.hook.OnRequest(observability.Event{Operation: req.Operation, Platform: req.Platform})
+			c.hook.OnRequest(observability.Event{
+				Context:   ctx,
+				Operation: req.Operation,
+				Platform:  req.Platform,
+			})
 		}
 		response, doErr := client.Do(httpReq)
 		if doErr != nil {
 			duration := time.Since(started)
 			if ctxErr := ctx.Err(); ctxErr != nil {
-				c.observeResponse(req, 0, "", duration, ctxErr)
+				c.observeResponse(ctx, req, 0, "", duration, ctxErr)
 				c.logFailed(ctx, req, 0, attempt, policy.MaxAttempts, duration, "", ctxErr)
 				return ctxErr
 			}
 			lastErr = doErr
-			c.observeResponse(req, 0, "", duration, doErr)
+			c.observeResponse(ctx, req, 0, "", duration, doErr)
 			if attempt < policy.MaxAttempts && retryableRequest(req) {
 				delay := policy.Backoff(attempt)
 				c.logRetrying(ctx, req, 0, attempt, policy.MaxAttempts, duration, delay, "", doErr)
@@ -192,6 +196,7 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 			_ = response.Body.Close()
 			duration := time.Since(started)
 			c.observeResponse(
+				ctx,
 				req,
 				response.StatusCode,
 				requestID,
@@ -212,6 +217,7 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 			lastErr = readErr
 			duration := time.Since(started)
 			c.observeResponse(
+				ctx,
 				req,
 				response.StatusCode,
 				requestID,
@@ -225,6 +231,7 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 			lastErr = wxerrors.ParsePlatformError(req.Platform, req.Operation, response.StatusCode, responseBody, requestID)
 			duration := time.Since(started)
 			c.observeResponse(
+				ctx,
 				req,
 				response.StatusCode,
 				requestID,
@@ -254,6 +261,7 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 		); platformErr != nil {
 			duration := time.Since(started)
 			c.observeResponse(
+				ctx,
 				req,
 				response.StatusCode,
 				requestID,
@@ -267,6 +275,7 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 			_, writeErr := req.ResponseWriter.Write(responseBody)
 			duration := time.Since(started)
 			c.observeResponse(
+				ctx,
 				req,
 				response.StatusCode,
 				requestID,
@@ -282,14 +291,14 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 		}
 		if req.Result == nil || len(responseBody) == 0 || response.StatusCode == http.StatusNoContent {
 			duration := time.Since(started)
-			c.observeResponse(req, response.StatusCode, requestID, duration, nil)
+			c.observeResponse(ctx, req, response.StatusCode, requestID, duration, nil)
 			c.logCompleted(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID)
 			return nil
 		}
 		if bytesResult, ok := req.Result.(*[]byte); ok {
 			*bytesResult = append((*bytesResult)[:0], responseBody...)
 			duration := time.Since(started)
-			c.observeResponse(req, response.StatusCode, requestID, duration, nil)
+			c.observeResponse(ctx, req, response.StatusCode, requestID, duration, nil)
 			c.logCompleted(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID)
 			return nil
 		}
@@ -297,6 +306,7 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 			decodeErr := fmt.Errorf("decode %s response: %w", req.Operation, err)
 			duration := time.Since(started)
 			c.observeResponse(
+				ctx,
 				req,
 				response.StatusCode,
 				requestID,
@@ -307,7 +317,7 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 			return decodeErr
 		}
 		duration := time.Since(started)
-		c.observeResponse(req, response.StatusCode, requestID, duration, nil)
+		c.observeResponse(ctx, req, response.StatusCode, requestID, duration, nil)
 		c.logCompleted(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID)
 		return nil
 	}
@@ -334,6 +344,7 @@ func readAllLimited(reader io.Reader, limit int64) ([]byte, error) {
 }
 
 func (c *Client) observeResponse(
+	ctx context.Context,
 	req request.Request,
 	statusCode int,
 	requestID string,
@@ -344,6 +355,7 @@ func (c *Client) observeResponse(
 		return
 	}
 	c.hook.OnResponse(observability.Event{
+		Context:    ctx,
 		Operation:  req.Operation,
 		Platform:   req.Platform,
 		StatusCode: statusCode,
