@@ -1,6 +1,11 @@
 package work
 
 import (
+	"net/http"
+
+	corecache "github.com/goairix/wx/v2/core/cache"
+	"github.com/goairix/wx/v2/core/observability"
+	"github.com/goairix/wx/v2/core/transport"
 	"github.com/goairix/wx/v2/kernel/contracts"
 	"github.com/goairix/wx/v2/support/cache"
 	"github.com/goairix/wx/v2/support/lock"
@@ -20,6 +25,46 @@ type option struct {
 	cacheKeyPrefix      string
 	locker              lock.Locker
 	accessTokenProvider contracts.AccessTokenProvider
+	coreCache           corecache.Cache
+	baseURL             string
+	httpClient          *http.Client
+	retry               transport.RetryPolicy
+	hook                observability.Hook
+}
+
+// WithCoreCache configures the v2 credential cache.
+func WithCoreCache(value corecache.Cache) Option {
+	return func(o *option) {
+		o.coreCache = value
+	}
+}
+
+// WithBaseURL overrides the enterprise WeChat API endpoint.
+func WithBaseURL(value string) Option {
+	return func(o *option) {
+		o.baseURL = value
+	}
+}
+
+// WithHTTPClient configures the HTTP client.
+func WithHTTPClient(value *http.Client) Option {
+	return func(o *option) {
+		o.httpClient = value
+	}
+}
+
+// WithRetryPolicy configures transport retries.
+func WithRetryPolicy(value transport.RetryPolicy) Option {
+	return func(o *option) {
+		o.retry = value
+	}
+}
+
+// WithHook configures request observability.
+func WithHook(value observability.Hook) Option {
+	return func(o *option) {
+		o.hook = value
+	}
 }
 
 // Option 配置客户端使用的缓存、锁和 access_token 提供者。
