@@ -2,13 +2,9 @@ package user
 
 import (
 	"context"
-	"fmt"
-	"net/http"
 	"net/url"
 
 	"github.com/goairix/wx/v2/core/auth"
-	wxerrors "github.com/goairix/wx/v2/core/errors"
-	"github.com/goairix/wx/v2/core/request"
 	"github.com/goairix/wx/v2/core/transport"
 	"github.com/goairix/wx/v2/official/internal/api"
 )
@@ -17,6 +13,7 @@ import (
 type Client struct {
 	transport *transport.Client
 	auth      *auth.Manager
+	api       *api.Client
 	tags      *TagClient
 }
 
@@ -26,35 +23,128 @@ func NewClient(tr *transport.Client, manager *auth.Manager) *Client {
 	return &Client{
 		transport: tr,
 		auth:      manager,
+		api:       executor,
 		tags:      &TagClient{api: executor},
 	}
 }
 
+// Remark sets the account-local remark for a user.
+func (c *Client) Remark(
+	ctx context.Context,
+	openID string,
+	remark string,
+) error {
+	return c.api.Post(
+		ctx,
+		"official.user.remark",
+		"cgi-bin/user/info/updateremark",
+		map[string]string{"openid": openID, "remark": remark},
+		nil,
+	)
+}
+
 // Info fetches a user's profile.
 func (c *Client) Info(ctx context.Context, openID string) (*Info, error) {
-	credential, err := c.auth.Token(ctx)
-	if err != nil {
-		return nil, err
-	}
 	result := new(Info)
-	meta := &request.ResponseMeta{}
-	var envelope struct {
-		*Info
-		ErrCode int    `json:"errcode"`
-		ErrMsg  string `json:"errmsg"`
+	err := c.api.Get(
+		ctx,
+		"official.user.info",
+		"cgi-bin/user/info",
+		url.Values{
+			"openid": []string{openID},
+			"lang":   []string{"zh_CN"},
+		},
+		result,
+	)
+	return result, err
+}
+
+// BatchInfo fetches profiles for several users.
+func (c *Client) BatchInfo(
+	ctx context.Context,
+	users []map[string]string,
+) ([]Info, error) {
+	var result struct {
+		Users []Info `json:"user_info_list"`
 	}
-	envelope.Info = result
-	err = c.transport.Do(ctx, request.Request{Operation: "official.user.info", Platform: "official", Method: http.MethodGet, Path: "cgi-bin/user/info", Query: url.Values{"access_token": []string{credential.AccessToken}, "openid": []string{openID}, "lang": []string{"zh_CN"}}, Header: http.Header{"Authorization": []string{"Bearer " + credential.AccessToken}}, Result: &envelope, Meta: meta})
-	if err != nil {
-		return nil, err
-	}
-	if envelope.ErrCode != 0 {
-		return nil, &wxerrors.Error{Platform: "official", Operation: "official.user.info", HTTPStatus: meta.StatusCode, Code: fmt.Sprintf("%d", envelope.ErrCode), Message: envelope.ErrMsg, RequestID: meta.RequestID}
-	}
-	return result, nil
+	err := c.api.Post(
+		ctx,
+		"official.user.batch_info",
+		"cgi-bin/user/info/batchget",
+		map[string]interface{}{"user_list": users},
+		&result,
+	)
+	return result.Users, err
+}
+
+// List returns one page of users following the account.
+func (c *Client) List(ctx context.Context, nextOpenID string) (*List, error) {
+	result := new(List)
+	err := c.api.Get(
+		ctx,
+		"official.user.list",
+		"cgi-bin/user/get",
+		url.Values{"next_openid": []string{nextOpenID}},
+		result,
+	)
+	return result, err
+}
+
+// BlackList returns one page of blocked users.
+func (c *Client) BlackList(
+	ctx context.Context,
+	beginOpenID string,
+) (*List, error) {
+	result := new(List)
+	err := c.api.Post(
+		ctx,
+		"official.user.blacklist",
+		"cgi-bin/tags/members/getblacklist",
+		map[string]string{"begin_openid": beginOpenID},
+		result,
+	)
+	return result, err
+}
+
+// BatchBlackUser blocks several users.
+func (c *Client) BatchBlackUser(
+	ctx context.Context,
+	openIDs []string,
+) error {
+	return c.changeBlacklist(
+		ctx,
+		"batchblacklist",
+		openIDs,
+	)
+}
+
+// BatchUnBlackUser removes several users from the blacklist.
+func (c *Client) BatchUnBlackUser(
+	ctx context.Context,
+	openIDs []string,
+) error {
+	return c.changeBlacklist(
+		ctx,
+		"batchunblacklist",
+		openIDs,
+	)
 }
 
 // Tags returns user tag operations.
 func (c *Client) Tags() *TagClient {
 	return c.tags
+}
+
+func (c *Client) changeBlacklist(
+	ctx context.Context,
+	action string,
+	openIDs []string,
+) error {
+	return c.api.Post(
+		ctx,
+		"official.user."+action,
+		"cgi-bin/tags/members/"+action,
+		map[string]interface{}{"openid_list": openIDs},
+		nil,
+	)
 }

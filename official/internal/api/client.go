@@ -55,8 +55,11 @@ func (c *Client) Do(
 		Path:      path,
 		Query:     query,
 		Body:      body,
-		Result:    &envelope,
-		Meta:      meta,
+		Header: http.Header{
+			"Authorization": []string{"Bearer " + credential.AccessToken},
+		},
+		Result: &envelope,
+		Meta:   meta,
 	})
 	if err != nil {
 		return err

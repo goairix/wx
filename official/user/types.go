@@ -20,3 +20,13 @@ type Info struct {
 	Country        string  `json:"country"`
 	HeadImgURL     string  `json:"headimgurl"`
 }
+
+// List is a page of account followers or blocked users.
+type List struct {
+	Total      int64  `json:"total"`
+	Count      int64  `json:"count"`
+	NextOpenid string `json:"next_openid"`
+	Data       struct {
+		Openid []string `json:"openid"`
+	} `json:"data"`
+}
