@@ -15,11 +15,13 @@ import (
 )
 
 type authorizerCredential struct {
-	client       *Client
-	appID        string
-	mu           sync.RWMutex
-	refreshToken string
-	manager      *auth.Manager
+	client                *Client
+	appID                 string
+	mu                    sync.RWMutex
+	currentRefreshToken   string
+	persistedRefreshToken string
+	pendingRefreshToken   string
+	manager               *auth.Manager
 }
 
 func credentialIdentity(kind string, values ...string) string {
@@ -41,9 +43,10 @@ func (c *Client) authorizerManager(appID, refreshToken string) *auth.Manager {
 	}
 
 	credential := &authorizerCredential{
-		client:       c,
-		appID:        appID,
-		refreshToken: refreshToken,
+		client:                c,
+		appID:                 appID,
+		currentRefreshToken:   refreshToken,
+		persistedRefreshToken: refreshToken,
 	}
 	credential.manager = auth.NewManager(
 		"openplatform-authorizer",
@@ -56,13 +59,17 @@ func (c *Client) authorizerManager(appID, refreshToken string) *auth.Manager {
 }
 
 func (c *authorizerCredential) refresh(ctx context.Context) (auth.Credential, error) {
+	if err := c.persistPendingRefreshToken(ctx); err != nil {
+		return auth.Credential{}, err
+	}
+
 	componentCredential, err := c.client.component.Token(ctx)
 	if err != nil {
 		return auth.Credential{}, err
 	}
 
 	c.mu.RLock()
-	refreshToken := c.refreshToken
+	refreshToken := c.currentRefreshToken
 	c.mu.RUnlock()
 
 	var response struct {
@@ -99,7 +106,7 @@ func (c *authorizerCredential) refresh(ctx context.Context) (auth.Credential, er
 	if response.AccessToken == "" {
 		return auth.Credential{}, fmt.Errorf("openplatform authorizer: token response is empty")
 	}
-	if err := c.saveRotatedRefreshToken(ctx, response.RefreshToken); err != nil {
+	if err := c.acceptRefreshToken(ctx, response.RefreshToken); err != nil {
 		return auth.Credential{}, err
 	}
 	return auth.Credential{
@@ -108,21 +115,53 @@ func (c *authorizerCredential) refresh(ctx context.Context) (auth.Credential, er
 	}, nil
 }
 
-func (c *authorizerCredential) saveRotatedRefreshToken(ctx context.Context, refreshToken string) error {
+func (c *authorizerCredential) acceptRefreshToken(ctx context.Context, refreshToken string) error {
 	if refreshToken == "" {
-		return nil
+		return c.persistPendingRefreshToken(ctx)
 	}
 
 	c.mu.Lock()
-	if refreshToken == c.refreshToken {
-		c.mu.Unlock()
-		return nil
+	if refreshToken != c.currentRefreshToken {
+		c.currentRefreshToken = refreshToken
 	}
-	c.refreshToken = refreshToken
+	if c.client.refreshTokens == nil {
+		c.persistedRefreshToken = refreshToken
+		c.pendingRefreshToken = ""
+	} else if refreshToken != c.persistedRefreshToken {
+		c.pendingRefreshToken = refreshToken
+	}
 	c.mu.Unlock()
 
-	if c.client.refreshTokens == nil {
+	return c.persistPendingRefreshToken(ctx)
+}
+
+func (c *authorizerCredential) persistPendingRefreshToken(ctx context.Context) error {
+	store := c.client.refreshTokens
+	if store == nil {
 		return nil
 	}
-	return c.client.refreshTokens.SaveRefreshToken(ctx, c.appID, refreshToken)
+
+	for {
+		c.mu.RLock()
+		pending := c.pendingRefreshToken
+		c.mu.RUnlock()
+		if pending == "" {
+			return nil
+		}
+
+		if err := store.SaveRefreshToken(ctx, c.appID, pending); err != nil {
+			return err
+		}
+
+		c.mu.Lock()
+		if c.pendingRefreshToken == pending {
+			c.persistedRefreshToken = pending
+			c.pendingRefreshToken = ""
+		}
+		morePending := c.pendingRefreshToken != ""
+		c.mu.Unlock()
+		if !morePending {
+			return nil
+		}
+	}
 }

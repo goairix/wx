@@ -653,6 +653,142 @@ func TestAuthorizerRefreshTokenRotationIsReusedAndPersisted(t *testing.T) {
 	}
 }
 
+func TestPendingRefreshTokenPersistenceIsRetried(t *testing.T) {
+	tests := []struct {
+		name               string
+		secondRefreshToken string
+	}{
+		{
+			name:               "same token response",
+			secondRefreshToken: "rotated-refresh-token",
+		},
+		{
+			name: "empty token response",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var requestMu sync.Mutex
+			var usedRefreshTokens []string
+			var releaseCalls int32
+			server := httptest.NewServer(http.HandlerFunc(func(
+				writer http.ResponseWriter,
+				request *http.Request,
+			) {
+				writer.Header().Set("Content-Type", "application/json")
+				switch request.URL.Path {
+				case "/cgi-bin/component/api_component_token":
+					writeJSON(writer, map[string]interface{}{
+						"component_access_token": "component-token",
+						"expires_in":             7200,
+					})
+				case "/cgi-bin/component/api_authorizer_token":
+					var body struct {
+						RefreshToken string `json:"authorizer_refresh_token"`
+					}
+					if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+						t.Errorf("decode authorizer request: %v", err)
+						writer.WriteHeader(http.StatusBadRequest)
+						return
+					}
+					requestMu.Lock()
+					usedRefreshTokens = append(usedRefreshTokens, body.RefreshToken)
+					attempt := len(usedRefreshTokens)
+					requestMu.Unlock()
+					response := map[string]interface{}{
+						"authorizer_access_token": "access-token-2",
+						"expires_in":              7200,
+					}
+					if attempt == 1 {
+						response["authorizer_access_token"] = "access-token-1"
+						response["authorizer_refresh_token"] = "rotated-refresh-token"
+					} else if test.secondRefreshToken != "" {
+						response["authorizer_refresh_token"] = test.secondRefreshToken
+					}
+					writeJSON(writer, response)
+				case "/wxa/release":
+					atomic.AddInt32(&releaseCalls, 1)
+					writeJSON(writer, map[string]interface{}{"errcode": 0})
+				default:
+					http.NotFound(writer, request)
+				}
+			}))
+			defer server.Close()
+
+			var callbackMu sync.Mutex
+			var savedTokens []string
+			storeAttempts := 0
+			refreshStore := RefreshTokenStoreFunc(func(
+				_ context.Context,
+				_ string,
+				refreshToken string,
+			) error {
+				callbackMu.Lock()
+				defer callbackMu.Unlock()
+				storeAttempts++
+				savedTokens = append(savedTokens, refreshToken)
+				if storeAttempts == 1 {
+					return stderrors.New("refresh token store unavailable")
+				}
+				return nil
+			})
+			client, err := NewClient(
+				Config{AppID: "component-app", AppSecret: "component-secret"},
+				WithHTTPClient(server.Client()),
+				WithBaseURL(server.URL),
+				WithCache(newTrackingCache()),
+				WithRefreshTokenStore(refreshStore),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx := context.Background()
+			if err := client.Component().SetVerifyTicket(ctx, "ticket-1"); err != nil {
+				t.Fatal(err)
+			}
+			codeClient := client.Code().ForAuthorizer("authorizer-app", "initial-refresh-token")
+			if err := codeClient.Release(ctx); err == nil {
+				t.Fatal("expected first refresh to return the store error")
+			}
+			if err := codeClient.Release(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if err := codeClient.Release(ctx); err != nil {
+				t.Fatal(err)
+			}
+
+			requestMu.Lock()
+			gotRefreshTokens := append([]string(nil), usedRefreshTokens...)
+			requestMu.Unlock()
+			wantRefreshTokens := []string{"initial-refresh-token", "rotated-refresh-token"}
+			if len(gotRefreshTokens) != 2 ||
+				gotRefreshTokens[0] != wantRefreshTokens[0] ||
+				gotRefreshTokens[1] != wantRefreshTokens[1] {
+				t.Fatalf("refresh token requests = %v, want %v", gotRefreshTokens, wantRefreshTokens)
+			}
+
+			callbackMu.Lock()
+			gotSavedTokens := append([]string(nil), savedTokens...)
+			gotStoreAttempts := storeAttempts
+			callbackMu.Unlock()
+			if gotStoreAttempts != 2 ||
+				len(gotSavedTokens) != 2 ||
+				gotSavedTokens[0] != "rotated-refresh-token" ||
+				gotSavedTokens[1] != "rotated-refresh-token" {
+				t.Fatalf(
+					"store attempts = %d, tokens = %v",
+					gotStoreAttempts,
+					gotSavedTokens,
+				)
+			}
+			if got := atomic.LoadInt32(&releaseCalls); got != 2 {
+				t.Fatalf("release calls = %d, want 2", got)
+			}
+		})
+	}
+}
+
 func TestAcceptVerifyTicketFailsClosed(t *testing.T) {
 	client, err := NewClient(Config{
 		AppID:     "component-app",
