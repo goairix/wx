@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -52,7 +53,13 @@ func TestEncryptedCallbackEncryptsNonEmptyResponse(t *testing.T) {
 			EncodingAESKey: encodedKey,
 		},
 		HandlerFunc(func(context.Context, Payload) (Response, error) {
-			return Response{Body: []byte(`<xml><Content>reply</Content></xml>`)}, nil
+			body := []byte(`<xml><Content>reply</Content></xml>`)
+			return Response{
+				Header: http.Header{
+					"Content-Length": []string{strconv.Itoa(len(body))},
+				},
+				Body: body,
+			}, nil
 		}),
 		WithErrorResponse(func(error) Response {
 			return Response{Status: http.StatusBadRequest}
@@ -80,6 +87,9 @@ func TestEncryptedCallbackEncryptsNonEmptyResponse(t *testing.T) {
 			response.Body.String(),
 			err,
 		)
+	}
+	if got := response.Header().Get("Content-Length"); got != strconv.Itoa(response.Body.Len()) {
+		t.Fatalf("content length = %q, body length = %d", got, response.Body.Len())
 	}
 	if err := VerifyMessageSignature(
 		token,

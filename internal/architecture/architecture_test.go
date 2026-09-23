@@ -25,6 +25,18 @@ var legacyRoots = []string{
 	"support",
 }
 
+var legacyPackages = []string{
+	modulePath + "/official/qr_code",
+	modulePath + "/work/account_id",
+	modulePath + "/work/mini_program",
+}
+
+var legacyDirectories = []string{
+	"official/qr_code",
+	"work/account_id",
+	"work/mini_program",
+}
+
 var platforms = map[string]bool{
 	"official":     true,
 	"miniapp":      true,
@@ -47,6 +59,14 @@ func TestPackageArchitecture(t *testing.T) {
 	for _, legacy := range legacyRoots {
 		if _, err := os.Stat(filepath.Join(root, legacy)); !os.IsNotExist(err) {
 			violations = append(violations, "legacy directory still exists: "+legacy)
+		}
+	}
+	for _, legacy := range legacyDirectories {
+		if _, err := os.Stat(filepath.Join(root, legacy)); !os.IsNotExist(err) {
+			violations = append(
+				violations,
+				"legacy directory still exists: "+legacy,
+			)
 		}
 	}
 
@@ -123,6 +143,30 @@ func TestCrossesDomainBoundary(t *testing.T) {
 			want:     false,
 		},
 		{
+			name:     "shared package cannot import concrete domain",
+			current:  modulePath + "/official/internal/api",
+			imported: modulePath + "/official/menu",
+			want:     true,
+		},
+		{
+			name:     "shared package cannot import platform root",
+			current:  modulePath + "/official/internal/api",
+			imported: modulePath + "/official",
+			want:     true,
+		},
+		{
+			name:     "shared package cannot import another platform",
+			current:  modulePath + "/official/internal/api",
+			imported: modulePath + "/miniapp/internal/api",
+			want:     true,
+		},
+		{
+			name:     "shared package may import same platform shared layer",
+			current:  modulePath + "/healthcard/contracts",
+			imported: modulePath + "/healthcard/model",
+			want:     false,
+		},
+		{
 			name:     "openplatform composes official",
 			current:  modulePath + "/openplatform",
 			imported: modulePath + "/official",
@@ -162,6 +206,22 @@ func TestCrossesDomainBoundary(t *testing.T) {
 	}
 }
 
+func TestLegacyPackageDetection(t *testing.T) {
+	for _, importPath := range []string{
+		modulePath + "/work/account_id",
+		modulePath + "/work/account_id/internal",
+		modulePath + "/work/mini_program",
+		modulePath + "/official/qr_code",
+	} {
+		if legacyRoot(importPath) == "" {
+			t.Fatalf("legacy package was not detected: %s", importPath)
+		}
+	}
+	if legacyRoot(modulePath+"/work/accountid") != "" {
+		t.Fatal("current work/accountid package was marked legacy")
+	}
+}
+
 func repositoryRoot(t *testing.T) string {
 	t.Helper()
 	_, filename, _, ok := runtime.Caller(0)
@@ -196,6 +256,11 @@ func listPackages(t *testing.T, root string) []listedPackage {
 }
 
 func legacyRoot(importPath string) string {
+	for _, legacy := range legacyPackages {
+		if importPath == legacy || strings.HasPrefix(importPath, legacy+"/") {
+			return strings.TrimPrefix(legacy, modulePath+"/")
+		}
+	}
 	for _, legacy := range legacyRoots {
 		prefix := modulePath + "/" + legacy
 		if importPath == prefix || strings.HasPrefix(importPath, prefix+"/") {
@@ -229,7 +294,10 @@ func crossesDomainBoundary(packagePath, importedPath string) bool {
 		return !allowedPlatformComposition(packagePath, importedPath)
 	}
 	if sharedPlatformPackage(domain) {
-		return false
+		if importedPlatform != platform || importedDomain == "" {
+			return true
+		}
+		return !sharedPlatformPackage(importedDomain)
 	}
 	if importedPlatform != platform {
 		return true

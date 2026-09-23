@@ -54,6 +54,48 @@ func TestHandlerDecodesTypedEventAndPreservesContext(t *testing.T) {
 	}
 }
 
+func TestHandlerKeepsMessageAndTemplateMessageIDsDistinct(t *testing.T) {
+	client := NewClient("app", "token", "")
+	handler := client.Handler(HandlerFunc(func(
+		ctx context.Context,
+		event Event,
+	) (corewebhook.Response, error) {
+		if event.MessageID != 12 || event.TemplateMessageID != 34 {
+			t.Fatalf("event = %#v", event)
+		}
+		return corewebhook.EmptyResponse(), nil
+	}))
+	target := "/callback?timestamp=100&nonce=nonce&signature=" +
+		corewebhook.Signature("token", "100", "nonce")
+	request := httptest.NewRequest(
+		http.MethodPost,
+		target,
+		strings.NewReader(
+			`<xml><MsgType>event</MsgType><Event>TEMPLATESENDJOBFINISH</Event>`+
+				`<MsgId>12</MsgId><MsgID>34</MsgID><Status>success</Status></xml>`,
+		),
+	)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("response = %d %q", response.Code, response.Body.String())
+	}
+}
+
+func TestEventDecodesTemplateMessageIDFromJSON(t *testing.T) {
+	var event Event
+	err := corewebhook.Decode(corewebhook.Payload{
+		Format: "json",
+		Raw:    []byte(`{"MsgId":12,"MsgID":34}`),
+	}, &event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event.MessageID != 12 || event.TemplateMessageID != 34 {
+		t.Fatalf("event = %#v", event)
+	}
+}
+
 func TestOfficialWebhookContract(t *testing.T) {
 	testkit.VerifyWebhookContract(t, func(
 		receiverID string,

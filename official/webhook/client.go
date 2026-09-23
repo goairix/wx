@@ -10,32 +10,33 @@ import (
 
 // Event contains common official account message and event fields.
 type Event struct {
-	ToUserName   string `xml:"ToUserName" json:"ToUserName"`
-	FromUserName string `xml:"FromUserName" json:"FromUserName"`
-	CreateTime   int64  `xml:"CreateTime" json:"CreateTime"`
-	MessageType  string `xml:"MsgType" json:"MsgType"`
-	MessageID    int64  `xml:"MsgId" json:"MsgId"`
-	Content      string `xml:"Content" json:"Content"`
-	MediaID      string `xml:"MediaId" json:"MediaId"`
-	PicURL       string `xml:"PicUrl" json:"PicUrl"`
-	Format       string `xml:"Format" json:"Format"`
-	Recognition  string `xml:"Recognition" json:"Recognition"`
-	ThumbMediaID string `xml:"ThumbMediaId" json:"ThumbMediaId"`
-	LocationX    string `xml:"Location_X" json:"Location_X"`
-	LocationY    string `xml:"Location_Y" json:"Location_Y"`
-	Scale        string `xml:"Scale" json:"Scale"`
-	Label        string `xml:"Label" json:"Label"`
-	Title        string `xml:"Title" json:"Title"`
-	Description  string `xml:"Description" json:"Description"`
-	URL          string `xml:"Url" json:"Url"`
-	Event        string `xml:"Event" json:"Event"`
-	EventKey     string `xml:"EventKey" json:"EventKey"`
-	Ticket       string `xml:"Ticket" json:"Ticket"`
-	MenuID       string `xml:"MenuId" json:"MenuId"`
-	Status       string `xml:"Status" json:"Status"`
-	Latitude     string `xml:"Latitude" json:"Latitude"`
-	Longitude    string `xml:"Longitude" json:"Longitude"`
-	Precision    string `xml:"Precision" json:"Precision"`
+	ToUserName        string `xml:"ToUserName" json:"ToUserName"`
+	FromUserName      string `xml:"FromUserName" json:"FromUserName"`
+	CreateTime        int64  `xml:"CreateTime" json:"CreateTime"`
+	MessageType       string `xml:"MsgType" json:"MsgType"`
+	MessageID         int64  `xml:"MsgId" json:"MsgId"`
+	TemplateMessageID int64  `xml:"MsgID" json:"MsgID"`
+	Content           string `xml:"Content" json:"Content"`
+	MediaID           string `xml:"MediaId" json:"MediaId"`
+	PicURL            string `xml:"PicUrl" json:"PicUrl"`
+	Format            string `xml:"Format" json:"Format"`
+	Recognition       string `xml:"Recognition" json:"Recognition"`
+	ThumbMediaID      string `xml:"ThumbMediaId" json:"ThumbMediaId"`
+	LocationX         string `xml:"Location_X" json:"Location_X"`
+	LocationY         string `xml:"Location_Y" json:"Location_Y"`
+	Scale             string `xml:"Scale" json:"Scale"`
+	Label             string `xml:"Label" json:"Label"`
+	Title             string `xml:"Title" json:"Title"`
+	Description       string `xml:"Description" json:"Description"`
+	URL               string `xml:"Url" json:"Url"`
+	Event             string `xml:"Event" json:"Event"`
+	EventKey          string `xml:"EventKey" json:"EventKey"`
+	Ticket            string `xml:"Ticket" json:"Ticket"`
+	MenuID            string `xml:"MenuId" json:"MenuId"`
+	Status            string `xml:"Status" json:"Status"`
+	Latitude          string `xml:"Latitude" json:"Latitude"`
+	Longitude         string `xml:"Longitude" json:"Longitude"`
+	Precision         string `xml:"Precision" json:"Precision"`
 }
 
 // Handler processes a typed official account event.

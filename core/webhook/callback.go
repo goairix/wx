@@ -218,6 +218,7 @@ func (h *callbackHandler) deliverEncryptedResponse(
 	}
 	copyHeader(writer.Header(), buffer.header)
 	writer.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	writer.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	writer.WriteHeader(buffer.statusCode())
 	_, _ = writer.Write(body)
 }
