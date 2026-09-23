@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -13,22 +14,21 @@ import (
 	"github.com/goairix/wx/v2/core/auth"
 	wxerrors "github.com/goairix/wx/v2/core/errors"
 	"github.com/goairix/wx/v2/core/request"
-	"github.com/goairix/wx/v2/core/transport"
 )
 
 const platform = "work"
 
 // Client executes authenticated enterprise WeChat requests.
 type Client struct {
-	Transport *transport.Client
-	Auth      *auth.Manager
+	transport request.Caller
+	auth      *auth.Manager
 }
 
 // New constructs a domain request executor.
-func New(transportClient *transport.Client, manager *auth.Manager) *Client {
+func New(transportClient request.Caller, manager *auth.Manager) *Client {
 	return &Client{
-		Transport: transportClient,
-		Auth:      manager,
+		transport: transportClient,
+		auth:      manager,
 	}
 }
 
@@ -42,7 +42,7 @@ func (c *Client) Do(
 	body interface{},
 	result interface{},
 ) error {
-	credential, err := c.Auth.Token(ctx)
+	credential, err := c.auth.Token(ctx)
 	if err != nil {
 		return err
 	}
@@ -55,7 +55,7 @@ func (c *Client) Do(
 	envelope := responseEnvelope{
 		value: result,
 	}
-	err = c.Transport.Do(ctx, request.Request{
+	err = c.transport.Do(ctx, request.Request{
 		Operation: operation,
 		Platform:  platform,
 		Method:    method,
@@ -113,7 +113,7 @@ func (c *Client) Raw(
 	header http.Header,
 	body []byte,
 ) ([]byte, *request.ResponseMeta, error) {
-	credential, err := c.Auth.Token(ctx)
+	credential, err := c.auth.Token(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -123,7 +123,7 @@ func (c *Client) Raw(
 	query.Set("access_token", credential.AccessToken)
 	result := make([]byte, 0)
 	meta := new(request.ResponseMeta)
-	err = c.Transport.Do(ctx, request.Request{
+	err = c.transport.Do(ctx, request.Request{
 		Operation: operation,
 		Platform:  platform,
 		Method:    method,
@@ -154,6 +154,40 @@ func (c *Client) Raw(
 		}
 	}
 	return result, meta, nil
+}
+
+// RawTo executes an authenticated request and streams a successful response.
+func (c *Client) RawTo(
+	ctx context.Context,
+	operation string,
+	method string,
+	path string,
+	query url.Values,
+	header http.Header,
+	body []byte,
+	destination io.Writer,
+) (*request.ResponseMeta, error) {
+	credential, err := c.auth.Token(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if query == nil {
+		query = make(url.Values)
+	}
+	query.Set("access_token", credential.AccessToken)
+	meta := new(request.ResponseMeta)
+	err = c.transport.Do(ctx, request.Request{
+		Operation:      operation,
+		Platform:       platform,
+		Method:         method,
+		Path:           path,
+		Query:          query,
+		Header:         header,
+		Body:           body,
+		ResponseWriter: destination,
+		Meta:           meta,
+	})
+	return meta, err
 }
 
 func looksLikeJSON(contentType string, data []byte) bool {

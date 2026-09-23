@@ -73,13 +73,23 @@ func (m *Manager) Token(ctx context.Context) (Credential, error) {
 		return credential, err
 	}
 
-	callKey, call, leader := beginRefresh(m.cache, m.cacheKey, m.coordinator)
-	if !leader {
-		return waitRefresh(ctx, call)
+	for {
+		callKey, call, leader := beginRefresh(m.cache, m.cacheKey, m.coordinator)
+		if leader {
+			credential, err = m.refresh(ctx)
+			contextErr := ctx.Err()
+			retryWaiters := contextErr != nil && err != nil
+			finishRefresh(callKey, call, credential, err, retryWaiters)
+			return credential, err
+		}
+
+		credential, err, retry := waitRefresh(ctx, call)
+		if !retry || ctx.Err() != nil {
+			return credential, err
+		}
+		// The previous refresh used another caller's context. If that caller
+		// canceled, an active waiter must be allowed to elect a new leader.
 	}
-	credential, err = m.refresh(ctx)
-	finishRefresh(callKey, call, credential, err)
-	return credential, err
 }
 
 func (m *Manager) cached(ctx context.Context) (Credential, bool, error) {

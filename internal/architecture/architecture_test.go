@@ -91,6 +91,17 @@ func TestPackageArchitecture(t *testing.T) {
 					fmt.Sprintf("core package %s imports platform %s", current.ImportPath, imported),
 				)
 			}
+			if platform, domain := platformDomain(current.ImportPath); platform != "" &&
+				domain != "" &&
+				imported == modulePath+"/core/transport" {
+				violations = append(
+					violations,
+					fmt.Sprintf(
+						"domain package %s depends on concrete transport",
+						current.ImportPath,
+					),
+				)
+			}
 			if crossesDomainBoundary(current.ImportPath, imported) {
 				violations = append(
 					violations,

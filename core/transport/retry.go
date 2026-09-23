@@ -2,7 +2,8 @@ package transport
 
 import "time"
 
-// RetryPolicy controls retries for responses whose status code is configured.
+// RetryPolicy controls retry attempts and retryable HTTP status codes. A
+// request must also permit retries through its request.RetryMode and method.
 type RetryPolicy struct {
 	MaxAttempts int
 	Backoff     func(attempt int) time.Duration

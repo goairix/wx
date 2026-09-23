@@ -59,8 +59,12 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 	}
 	tr := optsState.transport
 	if tr == nil {
-		tr = transport.New(optsState.httpClient, baseURL, optsState.retry)
-		tr.Hook = optsState.hook
+		tr = transport.New(
+			optsState.httpClient,
+			baseURL,
+			optsState.retry,
+			transport.WithHook(optsState.hook),
+		)
 	}
 	credentialCache := optsState.coreCache
 	if credentialCache == nil {

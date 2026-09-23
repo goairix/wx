@@ -150,6 +150,64 @@ func TestManagerWaiterCanCancelDuringRefresh(t *testing.T) {
 	}
 }
 
+func TestManagerWaiterRetriesWhenLeaderContextIsCanceled(t *testing.T) {
+	providerStarted := make(chan struct{})
+	sharedCache := cache.NewMemory()
+	var calls int32
+	manager := NewManager(
+		"work",
+		"corp-leader-cancel",
+		sharedCache,
+		ProviderFunc(func(ctx context.Context) (Credential, error) {
+			if atomic.AddInt32(&calls, 1) == 1 {
+				close(providerStarted)
+				<-ctx.Done()
+				return Credential{}, ctx.Err()
+			}
+			return Credential{
+				AccessToken: "replacement-token",
+				ExpiresAt:   time.Now().Add(time.Hour),
+			}, nil
+		}),
+	)
+
+	leaderContext, cancelLeader := context.WithCancel(context.Background())
+	leaderDone := make(chan error, 1)
+	go func() {
+		_, err := manager.Token(leaderContext)
+		leaderDone <- err
+	}()
+	<-providerStarted
+
+	waiterDone := make(chan struct {
+		credential Credential
+		err        error
+	}, 1)
+	go func() {
+		credential, err := manager.Token(context.Background())
+		waiterDone <- struct {
+			credential Credential
+			err        error
+		}{credential: credential, err: err}
+	}()
+	waitForParticipants(t, sharedCache, manager.cacheKey, manager.coordinator, 2)
+	cancelLeader()
+
+	if err := <-leaderDone; err != context.Canceled {
+		t.Fatalf("leader error = %v, want context.Canceled", err)
+	}
+	result := <-waiterDone
+	if result.err != nil {
+		t.Fatalf("waiter error = %v", result.err)
+	}
+	if result.credential.AccessToken != "replacement-token" {
+		t.Fatalf("waiter credential = %#v", result.credential)
+	}
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Fatalf("provider called %d times, want 2", got)
+	}
+}
+
 func waitForParticipants(
 	t *testing.T,
 	c cache.Cache,

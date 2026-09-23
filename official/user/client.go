@@ -5,26 +5,22 @@ import (
 	"net/url"
 
 	"github.com/goairix/wx/v2/core/auth"
-	"github.com/goairix/wx/v2/core/transport"
+	"github.com/goairix/wx/v2/core/request"
 	"github.com/goairix/wx/v2/official/internal/api"
 )
 
 // Client provides official account user APIs.
 type Client struct {
-	transport *transport.Client
-	auth      *auth.Manager
-	api       *api.Client
-	tags      *TagClient
+	api  *api.Client
+	tags *TagClient
 }
 
 // NewClient constructs a user domain client.
-func NewClient(tr *transport.Client, manager *auth.Manager) *Client {
+func NewClient(tr request.Caller, manager *auth.Manager) *Client {
 	executor := api.New(tr, manager)
 	return &Client{
-		transport: tr,
-		auth:      manager,
-		api:       executor,
-		tags:      &TagClient{api: executor},
+		api:  executor,
+		tags: &TagClient{api: executor},
 	}
 }
 

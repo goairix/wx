@@ -71,8 +71,12 @@ func NewClient(config Config, options ...Option) (*Client, error) {
 		if baseURL == "" {
 			baseURL = defaultBaseURL
 		}
-		transportClient = transport.New(settings.httpClient, baseURL, settings.retry)
-		transportClient.Hook = settings.hook
+		transportClient = transport.New(
+			settings.httpClient,
+			baseURL,
+			settings.retry,
+			transport.WithHook(settings.hook),
+		)
 	}
 
 	client := &Client{

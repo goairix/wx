@@ -9,7 +9,6 @@ import (
 
 	"github.com/goairix/wx/v2/core/auth"
 	"github.com/goairix/wx/v2/core/request"
-	"github.com/goairix/wx/v2/core/transport"
 	"github.com/goairix/wx/v2/openplatform/internal/api"
 )
 
@@ -25,7 +24,7 @@ const (
 // Client provides component account authorization operations.
 type Client struct {
 	appID      string
-	transport  *transport.Client
+	transport  request.Caller
 	credential interface {
 		Token(context.Context) (auth.Credential, error)
 	}
@@ -34,7 +33,7 @@ type Client struct {
 // NewClient constructs an account authorization client.
 func NewClient(
 	appID string,
-	transportClient *transport.Client,
+	transportClient request.Caller,
 	credential interface {
 		Token(context.Context) (auth.Credential, error)
 	},

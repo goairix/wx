@@ -9,7 +9,6 @@ import (
 
 	wxerrors "github.com/goairix/wx/v2/core/errors"
 	"github.com/goairix/wx/v2/core/request"
-	"github.com/goairix/wx/v2/core/transport"
 )
 
 // LoginInfo describes the terminal used for a login.
@@ -53,14 +52,14 @@ type VerifyInfo struct {
 type Client struct {
 	appID     string
 	appSecret string
-	transport *transport.Client
+	transport request.Caller
 }
 
 // NewClient constructs a multi-terminal client.
 func NewClient(
 	appID string,
 	appSecret string,
-	transportClient *transport.Client,
+	transportClient request.Caller,
 ) *Client {
 	return &Client{
 		appID:     appID,

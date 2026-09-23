@@ -11,7 +11,6 @@ import (
 	corecache "github.com/goairix/wx/v2/core/cache"
 	wxerrors "github.com/goairix/wx/v2/core/errors"
 	"github.com/goairix/wx/v2/core/request"
-	"github.com/goairix/wx/v2/core/transport"
 )
 
 type Config struct {
@@ -20,12 +19,12 @@ type Config struct {
 }
 
 type Client struct {
-	transport *transport.Client
+	transport request.Caller
 	config    Config
 	cache     corecache.Cache
 }
 
-func New(tr *transport.Client, cfg Config, cache corecache.Cache) *Client {
+func New(tr request.Caller, cfg Config, cache corecache.Cache) *Client {
 	if cache == nil {
 		cache = corecache.NewMemory()
 	}

@@ -191,6 +191,21 @@ func TestDomainRequestsAndResponses(t *testing.T) {
 		if err != nil || string(voice) != "voice-content" {
 			t.Fatalf("voice = %q, err = %v", voice, err)
 		}
+
+		var streamed strings.Builder
+		contentType, err = client.Media().DownloadTo(
+			ctx,
+			"media-one",
+			&streamed,
+		)
+		if err != nil || streamed.String() != "media-content" || contentType != "text/plain" {
+			t.Fatalf(
+				"streamed = %q, type = %q, err = %v",
+				streamed.String(),
+				contentType,
+				err,
+			)
+		}
 	})
 
 	t.Run("account id", func(t *testing.T) {

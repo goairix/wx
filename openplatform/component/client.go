@@ -10,7 +10,6 @@ import (
 	"github.com/goairix/wx/v2/core/auth"
 	"github.com/goairix/wx/v2/core/cache"
 	"github.com/goairix/wx/v2/core/request"
-	"github.com/goairix/wx/v2/core/transport"
 	"github.com/goairix/wx/v2/openplatform/internal/api"
 )
 
@@ -25,7 +24,7 @@ type Config struct {
 // Client manages the verify ticket and component access token.
 type Client struct {
 	config    Config
-	transport *transport.Client
+	transport request.Caller
 	cache     cache.Cache
 	ticketKey string
 	manager   *auth.Manager
@@ -34,7 +33,7 @@ type Client struct {
 // NewClient constructs a component credential client.
 func NewClient(
 	config Config,
-	transportClient *transport.Client,
+	transportClient request.Caller,
 	store cache.Cache,
 	credentialKey string,
 	ticketKey string,

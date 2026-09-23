@@ -64,8 +64,12 @@ func NewClient(config Config, options ...Option) (*Client, error) {
 	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
-	transportClient := transport.New(settings.httpClient, baseURL, settings.retry)
-	transportClient.Hook = settings.hook
+	transportClient := transport.New(
+		settings.httpClient,
+		baseURL,
+		settings.retry,
+		transport.WithHook(settings.hook),
+	)
 	credentialCache := settings.coreCache
 	if credentialCache == nil {
 		credentialCache = corecache.NewMemory()
@@ -90,7 +94,7 @@ func NewClient(config Config, options ...Option) (*Client, error) {
 	client.media = media.NewClient(executor)
 	client.accountID = accountid.NewClient(executor)
 	client.miniApp = miniapp.NewClient(executor)
-	client.authorizer = authorizer.NewClient(executor)
+	client.authorizer = authorizer.NewClient(transportClient)
 	client.webhook = workwebhook.NewClient(config.CorpID, config.Token, config.EncodingAESKey)
 	return client, nil
 }

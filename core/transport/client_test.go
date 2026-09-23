@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"bytes"
 	"context"
 	stderrors "errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	wxerrors "github.com/goairix/wx/v2/core/errors"
+	"github.com/goairix/wx/v2/core/observability"
 	"github.com/goairix/wx/v2/core/request"
 )
 
@@ -89,6 +91,71 @@ func TestClientRetriesTransientNetworkErrors(t *testing.T) {
 	}
 }
 
+func TestClientDoesNotRetryPostByDefault(t *testing.T) {
+	var attempts int32
+	httpTransport := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		atomic.AddInt32(&attempts, 1)
+		return nil, fmt.Errorf("connection reset")
+	})
+	client := New(
+		&http.Client{Transport: httpTransport},
+		"http://example.test",
+		RetryPolicy{
+			MaxAttempts: 3,
+			Backoff:     func(int) time.Duration { return 0 },
+		},
+	)
+
+	err := client.Do(context.Background(), request.Request{
+		Operation: "test.post-no-retry",
+		Method:    http.MethodPost,
+		Path:      "/messages",
+		Body:      map[string]string{"message": "hello"},
+	})
+	if err == nil {
+		t.Fatal("Do() error = nil")
+	}
+	if got := atomic.LoadInt32(&attempts); got != 1 {
+		t.Fatalf("attempts = %d, want 1", got)
+	}
+}
+
+func TestClientRetriesPostWhenExplicitlyAllowed(t *testing.T) {
+	var attempts int32
+	httpTransport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if atomic.AddInt32(&attempts, 1) == 1 {
+			return nil, fmt.Errorf("connection reset")
+		}
+		return &http.Response{
+			StatusCode: http.StatusNoContent,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("")),
+			Request:    r,
+		}, nil
+	})
+	client := New(
+		&http.Client{Transport: httpTransport},
+		"http://example.test",
+		RetryPolicy{
+			MaxAttempts: 2,
+			Backoff:     func(int) time.Duration { return 0 },
+		},
+	)
+
+	err := client.Do(context.Background(), request.Request{
+		Operation: "test.post-explicit-retry",
+		Method:    http.MethodPost,
+		Path:      "/idempotent-operation",
+		RetryMode: request.RetryAlways,
+	})
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+	if got := atomic.LoadInt32(&attempts); got != 2 {
+		t.Fatalf("attempts = %d, want 2", got)
+	}
+}
+
 func TestClientStopsNetworkRetryWhenContextCanceled(t *testing.T) {
 	var attempts int32
 	ctx, cancel := context.WithCancel(context.Background())
@@ -106,6 +173,78 @@ func TestClientStopsNetworkRetryWhenContextCanceled(t *testing.T) {
 	err := client.Do(ctx, request.Request{Operation: "test.network-cancel", Method: http.MethodGet, Path: "/"})
 	if !stderrors.Is(err, context.Canceled) || atomic.LoadInt32(&attempts) != 1 {
 		t.Fatalf("err=%v attempts=%d", err, attempts)
+	}
+}
+
+func TestClientReportsNetworkFailureToHook(t *testing.T) {
+	networkError := stderrors.New("network unavailable")
+	httpTransport := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, networkError
+	})
+	var responseEvent observability.Event
+	client := New(
+		&http.Client{Transport: httpTransport},
+		"http://example.test",
+		RetryPolicy{},
+		WithHook(observability.HookFunc(func(event observability.Event) {
+			if event.Err != nil {
+				responseEvent = event
+			}
+		})),
+	)
+
+	err := client.Do(context.Background(), request.Request{
+		Operation: "test.network-observation",
+		Platform:  "test",
+		Method:    http.MethodGet,
+		Path:      "/",
+	})
+	if !stderrors.Is(err, networkError) {
+		t.Fatalf("Do() error = %v", err)
+	}
+	if !stderrors.Is(responseEvent.Err, networkError) {
+		t.Fatalf("response hook error = %v", responseEvent.Err)
+	}
+	if responseEvent.Operation != "test.network-observation" {
+		t.Fatalf("response hook operation = %q", responseEvent.Operation)
+	}
+}
+
+func TestClientReportsSuccessfulHTTPPlatformFailureToHook(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"errcode":40013,"errmsg":"invalid appid"}`))
+	}))
+	defer server.Close()
+
+	var responseEvent observability.Event
+	client := New(
+		server.Client(),
+		server.URL,
+		RetryPolicy{},
+		WithHook(observability.HookFunc(func(event observability.Event) {
+			if event.StatusCode != 0 {
+				responseEvent = event
+			}
+		})),
+	)
+	var result map[string]interface{}
+	err := client.Do(context.Background(), request.Request{
+		Operation: "test.platform-error",
+		Platform:  "official",
+		Method:    http.MethodGet,
+		Path:      "/",
+		Result:    &result,
+	})
+	var platformError *wxerrors.Error
+	if !stderrors.As(err, &platformError) {
+		t.Fatalf("Do() error = %T %v, want *errors.Error", err, err)
+	}
+	if !stderrors.As(responseEvent.Err, &platformError) {
+		t.Fatalf("response hook error = %T %v", responseEvent.Err, responseEvent.Err)
+	}
+	if responseEvent.StatusCode != http.StatusOK {
+		t.Fatalf("response hook status = %d", responseEvent.StatusCode)
 	}
 }
 
@@ -167,6 +306,82 @@ func TestClientReturnsPlatformErrorAndRequestID(t *testing.T) {
 	}
 	if meta.StatusCode != http.StatusBadRequest || meta.RequestID != "rid-1" {
 		t.Fatalf("unexpected metadata: %+v", meta)
+	}
+}
+
+func TestClientRejectsResponseLargerThanConfiguredLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("12345"))
+	}))
+	defer server.Close()
+
+	client := New(
+		server.Client(),
+		server.URL,
+		RetryPolicy{},
+		WithMaxResponseBytes(4),
+	)
+	var result []byte
+	err := client.Do(context.Background(), request.Request{
+		Operation: "test.response-limit",
+		Method:    http.MethodGet,
+		Path:      "/",
+		Result:    &result,
+	})
+	if !stderrors.Is(err, ErrResponseTooLarge) {
+		t.Fatalf("Do() error = %v, want ErrResponseTooLarge", err)
+	}
+}
+
+func TestClientStreamsBinaryResponseToWriter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write([]byte("streamed-media"))
+	}))
+	defer server.Close()
+
+	var destination bytes.Buffer
+	err := New(server.Client(), server.URL, RetryPolicy{}).Do(
+		context.Background(),
+		request.Request{
+			Operation:      "test.stream",
+			Method:         http.MethodGet,
+			Path:           "/",
+			ResponseWriter: &destination,
+		},
+	)
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+	if got := destination.String(); got != "streamed-media" {
+		t.Fatalf("streamed body = %q", got)
+	}
+}
+
+func TestStreamingResponseDoesNotUseBufferedResponseLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write([]byte("12345"))
+	}))
+	defer server.Close()
+
+	var destination bytes.Buffer
+	err := New(
+		server.Client(),
+		server.URL,
+		RetryPolicy{},
+		WithMaxResponseBytes(4),
+	).Do(context.Background(), request.Request{
+		Operation:      "test.unbounded-stream",
+		Method:         http.MethodGet,
+		Path:           "/",
+		ResponseWriter: &destination,
+	})
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+	if got := destination.String(); got != "12345" {
+		t.Fatalf("streamed body = %q", got)
 	}
 }
 

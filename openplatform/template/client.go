@@ -9,13 +9,12 @@ import (
 
 	"github.com/goairix/wx/v2/core/auth"
 	"github.com/goairix/wx/v2/core/request"
-	"github.com/goairix/wx/v2/core/transport"
 	"github.com/goairix/wx/v2/openplatform/internal/api"
 )
 
 // Client manages the component's miniapp code templates.
 type Client struct {
-	transport  *transport.Client
+	transport  request.Caller
 	credential interface {
 		Token(context.Context) (auth.Credential, error)
 	}
@@ -23,7 +22,7 @@ type Client struct {
 
 // NewClient constructs a code template client.
 func NewClient(
-	transportClient *transport.Client,
+	transportClient request.Caller,
 	credential interface {
 		Token(context.Context) (auth.Credential, error)
 	},

@@ -31,8 +31,12 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 	if base == "" {
 		base = defaultBaseURL
 	}
-	tr := transport.New(s.httpClient, base, s.retry)
-	tr.Hook = s.hook
+	tr := transport.New(
+		s.httpClient,
+		base,
+		s.retry,
+		transport.WithHook(s.hook),
+	)
 	var c corecache.Cache = s.cache
 	if c == nil {
 		c = corecache.NewMemory()

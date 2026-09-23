@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -34,11 +35,11 @@ func (c *Client) Upload(
 	if err != nil {
 		return nil, err
 	}
-	if _, err := part.Write(data); err != nil {
-		return nil, err
+	if _, writeErr := part.Write(data); writeErr != nil {
+		return nil, writeErr
 	}
-	if err := writer.Close(); err != nil {
-		return nil, err
+	if closeErr := writer.Close(); closeErr != nil {
+		return nil, closeErr
 	}
 	header := make(http.Header)
 	header.Set("Content-Type", writer.FormDataContentType())
@@ -64,6 +65,28 @@ func (c *Client) Upload(
 // Download downloads temporary media.
 func (c *Client) Download(ctx context.Context, mediaID string) ([]byte, string, error) {
 	return c.download(ctx, "work.media.download", "cgi-bin/media/get", mediaID)
+}
+
+// DownloadTo streams temporary media to destination and returns its content type.
+func (c *Client) DownloadTo(
+	ctx context.Context,
+	mediaID string,
+	destination io.Writer,
+) (string, error) {
+	meta, err := c.api.RawTo(
+		ctx,
+		"work.media.download",
+		http.MethodGet,
+		"cgi-bin/media/get",
+		url.Values{"media_id": {mediaID}},
+		nil,
+		nil,
+		destination,
+	)
+	if err != nil {
+		return "", err
+	}
+	return meta.Header.Get("Content-Type"), nil
 }
 
 // GetJSSDK downloads high-definition voice media uploaded by JSSDK.
@@ -104,11 +127,11 @@ func (c *Client) UploadImage(
 	if err != nil {
 		return nil, err
 	}
-	if _, err := part.Write(data); err != nil {
-		return nil, err
+	if _, writeErr := part.Write(data); writeErr != nil {
+		return nil, writeErr
 	}
-	if err := writer.Close(); err != nil {
-		return nil, err
+	if closeErr := writer.Close(); closeErr != nil {
+		return nil, closeErr
 	}
 	header := make(http.Header)
 	header.Set("Content-Type", writer.FormDataContentType())

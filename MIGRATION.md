@@ -122,7 +122,11 @@ v2 完全移除了顶层 `support` 包。请直接依赖职责明确的 core 包
 | `support/util.RandString` | `core/random` |
 | 第三方错误包装 | `core/errors` 与标准库 `errors` |
 
-缓存和 HTTP option 的类型随之变化。自定义缓存应实现 `core/cache.Cache`。重试策略使用 `core/transport.RetryPolicy` 结构体，按 `MaxAttempts`、`Backoff` 和 `RetryStatus` 等字段构造后传给平台的 `WithRetryPolicy`（健康卡使用 `WithRetry`）。旧 locker option 已删除。
+缓存和 HTTP option 的类型随之变化。自定义缓存应实现 `core/cache.Cache`。重试策略使用 `core/transport.RetryPolicy` 结构体，按 `MaxAttempts`、`Backoff` 和 `RetryStatus` 等字段构造后传给平台的 `WithRetryPolicy`（健康卡使用 `WithRetry`）。POST 默认不重试，防止非幂等操作重复执行；自定义底层请求只有在确认操作可安全重复时才使用 `request.RetryAlways`。旧 locker option 已删除。
+
+`core/transport.Client` 的配置在构造时通过 `transport.New`、`transport.WithHook` 和
+`transport.WithMaxResponseBytes` 完成。客户端字段不再公开修改，避免共享 transport 在并发请求中
+发生配置竞争。领域扩展应接收 `request.Caller`，不要依赖具体的 `*transport.Client`。
 
 ## 6. 错误处理
 

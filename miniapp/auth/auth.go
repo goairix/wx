@@ -10,7 +10,6 @@ import (
 
 	wxerrors "github.com/goairix/wx/v2/core/errors"
 	"github.com/goairix/wx/v2/core/request"
-	"github.com/goairix/wx/v2/core/transport"
 )
 
 type Config struct {
@@ -19,7 +18,7 @@ type Config struct {
 }
 
 type Auth struct {
-	transport *transport.Client
+	transport request.Caller
 	config    Config
 }
 
@@ -31,7 +30,7 @@ type Session struct {
 	ErrMsg     string `json:"errmsg"`
 }
 
-func New(tr *transport.Client, config Config) *Auth {
+func New(tr request.Caller, config Config) *Auth {
 	return &Auth{transport: tr, config: config}
 }
 
@@ -85,7 +84,7 @@ type TokenResponse struct {
 	ErrMsg      string `json:"errmsg"`
 }
 
-func FetchToken(ctx context.Context, tr *transport.Client, config Config) (string, time.Time, error) {
+func FetchToken(ctx context.Context, tr request.Caller, config Config) (string, time.Time, error) {
 	var out TokenResponse
 	meta := &request.ResponseMeta{}
 	query := url.Values{

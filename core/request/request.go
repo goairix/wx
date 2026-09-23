@@ -2,9 +2,28 @@
 package request
 
 import (
+	"context"
+	"io"
 	"net/http"
 	"net/url"
 )
+
+// RetryMode controls whether transport retries are allowed for a request.
+type RetryMode uint8
+
+const (
+	// RetryDefault retries methods that are idempotent according to HTTP semantics.
+	RetryDefault RetryMode = iota
+	// RetryNever disables retries for this request.
+	RetryNever
+	// RetryAlways allows retries when the transport retry policy also allows them.
+	RetryAlways
+)
+
+// Caller executes a platform-independent request.
+type Caller interface {
+	Do(ctx context.Context, req Request) error
+}
 
 // Request describes an API request before it is encoded for transport.
 type Request struct {
@@ -16,5 +35,9 @@ type Request struct {
 	Header    http.Header
 	Body      interface{}
 	Result    interface{}
-	Meta      *ResponseMeta
+	// ResponseWriter receives a successful response without buffering it in
+	// memory. Result and ResponseWriter must not both be set.
+	ResponseWriter io.Writer
+	Meta           *ResponseMeta
+	RetryMode      RetryMode
 }

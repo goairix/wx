@@ -45,7 +45,9 @@ func (m *Memory) Get(ctx context.Context, key string) (string, bool, error) {
 	// Upgrade to a write lock and only remove the entry observed above. A
 	// concurrent Put may have replaced it while the read lock was released.
 	m.mu.Lock()
-	if current, exists := m.entries[key]; exists && current.expiresAt.Equal(entry.expiresAt) && current.value == entry.value {
+	if current, exists := m.entries[key]; exists &&
+		current.expiresAt.Equal(entry.expiresAt) &&
+		current.value == entry.value {
 		delete(m.entries, key)
 	}
 	m.mu.Unlock()

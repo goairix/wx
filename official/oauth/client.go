@@ -8,18 +8,17 @@ import (
 
 	wxerrors "github.com/goairix/wx/v2/core/errors"
 	"github.com/goairix/wx/v2/core/request"
-	"github.com/goairix/wx/v2/core/transport"
 )
 
 // Client provides official account OAuth APIs.
 type Client struct {
-	transport *transport.Client
+	transport request.Caller
 	appID     string
 	appSecret string
 }
 
 // NewClient constructs an OAuth domain client.
-func NewClient(tr *transport.Client, appID, appSecret string) *Client {
+func NewClient(tr request.Caller, appID, appSecret string) *Client {
 	return &Client{transport: tr, appID: appID, appSecret: appSecret}
 }
 
@@ -27,7 +26,20 @@ func NewClient(tr *transport.Client, appID, appSecret string) *Client {
 func (c *Client) TokenFromCode(ctx context.Context, code string) (*AccessTokenResponse, error) {
 	result := new(AccessTokenResponse)
 	meta := &request.ResponseMeta{}
-	err := c.transport.Do(ctx, request.Request{Operation: "official.oauth.token", Platform: "official", Method: http.MethodGet, Path: "sns/oauth2/access_token", Query: url.Values{"appid": []string{c.appID}, "secret": []string{c.appSecret}, "code": []string{code}, "grant_type": []string{"authorization_code"}}, Result: result, Meta: meta})
+	err := c.transport.Do(ctx, request.Request{
+		Operation: "official.oauth.token",
+		Platform:  "official",
+		Method:    http.MethodGet,
+		Path:      "sns/oauth2/access_token",
+		Query: url.Values{
+			"appid":      {c.appID},
+			"secret":     {c.appSecret},
+			"code":       {code},
+			"grant_type": {"authorization_code"},
+		},
+		Result: result,
+		Meta:   meta,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +68,19 @@ func (c *Client) UserInfo(ctx context.Context, accessToken, openID string) (*Use
 		ErrMsg  string `json:"errmsg"`
 	}
 	envelope.User = result
-	err := c.transport.Do(ctx, request.Request{Operation: "official.oauth.userinfo", Platform: "official", Method: http.MethodGet, Path: "sns/userinfo", Query: url.Values{"access_token": []string{accessToken}, "openid": []string{openID}, "lang": []string{"zh_CN"}}, Result: &envelope, Meta: meta})
+	err := c.transport.Do(ctx, request.Request{
+		Operation: "official.oauth.userinfo",
+		Platform:  "official",
+		Method:    http.MethodGet,
+		Path:      "sns/userinfo",
+		Query: url.Values{
+			"access_token": {accessToken},
+			"openid":       {openID},
+			"lang":         {"zh_CN"},
+		},
+		Result: &envelope,
+		Meta:   meta,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -72,5 +96,12 @@ func apiError(operation string, code int, message string, meta *request.Response
 	if meta != nil {
 		status, requestID = meta.StatusCode, meta.RequestID
 	}
-	return &wxerrors.Error{Platform: "official", Operation: operation, HTTPStatus: status, Code: fmt.Sprintf("%d", code), Message: message, RequestID: requestID}
+	return &wxerrors.Error{
+		Platform:   "official",
+		Operation:  operation,
+		HTTPStatus: status,
+		Code:       fmt.Sprintf("%d", code),
+		Message:    message,
+		RequestID:  requestID,
+	}
 }

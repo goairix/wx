@@ -11,19 +11,18 @@ import (
 	"github.com/goairix/wx/v2/core/auth"
 	wxerrors "github.com/goairix/wx/v2/core/errors"
 	"github.com/goairix/wx/v2/core/request"
-	"github.com/goairix/wx/v2/core/transport"
 )
 
 const platform = "miniapp"
 
 // Client executes authenticated official account requests.
 type Client struct {
-	transport *transport.Client
+	transport request.Caller
 	auth      *auth.Manager
 }
 
 // New creates an authenticated request executor.
-func New(transportClient *transport.Client, manager *auth.Manager) *Client {
+func New(transportClient request.Caller, manager *auth.Manager) *Client {
 	return &Client{transport: transportClient, auth: manager}
 }
 

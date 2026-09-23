@@ -12,15 +12,14 @@ import (
 	"github.com/goairix/wx/v2/core/auth"
 	wxerrors "github.com/goairix/wx/v2/core/errors"
 	"github.com/goairix/wx/v2/core/request"
-	"github.com/goairix/wx/v2/core/transport"
 )
 
 type Client struct {
-	transport *transport.Client
+	transport request.Caller
 	auth      *auth.Manager
 }
 
-func New(tr *transport.Client, a *auth.Manager) *Client {
+func New(tr request.Caller, a *auth.Manager) *Client {
 	return &Client{transport: tr, auth: a}
 }
 

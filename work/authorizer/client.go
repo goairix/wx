@@ -9,23 +9,21 @@ import (
 
 	wxerrors "github.com/goairix/wx/v2/core/errors"
 	"github.com/goairix/wx/v2/core/request"
-	"github.com/goairix/wx/v2/core/transport"
-	"github.com/goairix/wx/v2/work/internal/api"
 )
 
 // Client provides authorized enterprise APIs.
 type Client struct {
-	transport *transport.Client
+	transport request.Caller
 }
 
-func NewClient(executor *api.Client) *Client {
+func NewClient(caller request.Caller) *Client {
 	return &Client{
-		transport: executor.Transport,
+		transport: caller,
 	}
 }
 
 // NewWithTransport constructs an authorizer client from a shared transport.
-func NewWithTransport(transportClient *transport.Client) *Client {
+func NewWithTransport(transportClient request.Caller) *Client {
 	return &Client{
 		transport: transportClient,
 	}

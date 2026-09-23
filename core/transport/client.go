@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,20 +18,75 @@ import (
 	"github.com/goairix/wx/v2/core/request"
 )
 
+const defaultMaxResponseBytes int64 = 32 << 20
+
+// ErrResponseTooLarge is returned when a buffered response exceeds its limit.
+var ErrResponseTooLarge = errors.New("transport: response body exceeds configured limit")
+
 // Client is an injectable HTTP transport with request retries.
 type Client struct {
-	HTTPClient *http.Client
-	BaseURL    string
-	Retry      RetryPolicy
-	Hook       observability.Hook
+	httpClient       *http.Client
+	baseURL          string
+	retry            RetryPolicy
+	hook             observability.Hook
+	maxResponseBytes int64
+}
+
+// Option configures a transport client during construction.
+type Option interface {
+	apply(*clientOptions)
+}
+
+type clientOptions struct {
+	hook             observability.Hook
+	maxResponseBytes int64
+}
+
+type optionFunc func(*clientOptions)
+
+func (configure optionFunc) apply(options *clientOptions) {
+	configure(options)
+}
+
+// WithMaxResponseBytes sets the maximum buffered response size. A negative
+// value disables the limit.
+func WithMaxResponseBytes(limit int64) Option {
+	return optionFunc(func(options *clientOptions) {
+		options.maxResponseBytes = limit
+	})
+}
+
+// WithHook observes every HTTP attempt and its final transport or platform
+// result.
+func WithHook(hook observability.Hook) Option {
+	return optionFunc(func(options *clientOptions) {
+		options.hook = hook
+	})
 }
 
 // New constructs a transport client. A nil HTTP client gets a bounded default.
-func New(httpClient *http.Client, baseURL string, retry RetryPolicy) *Client {
+func New(
+	httpClient *http.Client,
+	baseURL string,
+	retry RetryPolicy,
+	options ...Option,
+) *Client {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
-	return &Client{HTTPClient: httpClient, BaseURL: strings.TrimRight(baseURL, "/"), Retry: retry.normalized()}
+	settings := clientOptions{maxResponseBytes: defaultMaxResponseBytes}
+	for _, option := range options {
+		if option != nil {
+			option.apply(&settings)
+		}
+	}
+	return &Client{
+		httpClient:       httpClient,
+		baseURL:          strings.TrimRight(baseURL, "/"),
+		retry:            retry.normalized(),
+		hook:             settings.hook,
+		maxResponseBytes: settings.maxResponseBytes,
+	}
 }
 
 // Do executes req, decoding a successful response into req.Result.
@@ -41,13 +97,16 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	policy := c.Retry.normalized()
-	client := c.HTTPClient
+	if req.Result != nil && req.ResponseWriter != nil {
+		return fmt.Errorf("transport: Result and ResponseWriter cannot both be set")
+	}
+	policy := c.retry.normalized()
+	client := c.httpClient
 	if client == nil {
 		client = &http.Client{Timeout: 30 * time.Second}
 	}
 
-	endpoint, err := resolveURL(c.BaseURL, req.Path, req.Query)
+	endpoint, err := resolveURL(c.baseURL, req.Path, req.Query)
 	if err != nil {
 		return err
 	}
@@ -69,17 +128,19 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 		if req.Body != nil && httpReq.Header.Get("Content-Type") == "" {
 			httpReq.Header.Set("Content-Type", "application/json")
 		}
-		if c.Hook != nil {
-			c.Hook.OnRequest(observability.Event{Operation: req.Operation, Platform: req.Platform})
+		if c.hook != nil {
+			c.hook.OnRequest(observability.Event{Operation: req.Operation, Platform: req.Platform})
 		}
 		started := time.Now()
 		response, doErr := client.Do(httpReq)
 		if doErr != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
+				c.observeResponse(req, 0, "", time.Since(started), ctxErr)
 				return ctxErr
 			}
 			lastErr = doErr
-			if attempt < policy.MaxAttempts {
+			c.observeResponse(req, 0, "", time.Since(started), doErr)
+			if attempt < policy.MaxAttempts && retryableRequest(req) {
 				if err := waitBackoff(ctx, policy.Backoff(attempt)); err != nil {
 					return err
 				}
@@ -87,8 +148,6 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 			}
 			break
 		}
-		responseBody, readErr := io.ReadAll(response.Body)
-		_ = response.Body.Close()
 		requestID := response.Header.Get("X-Request-Id")
 		if requestID == "" {
 			requestID = response.Header.Get("Request-Id")
@@ -98,16 +157,47 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 			req.Meta.Header = response.Header.Clone()
 			req.Meta.RequestID = requestID
 		}
+		if req.ResponseWriter != nil &&
+			response.StatusCode >= http.StatusOK &&
+			response.StatusCode < http.StatusMultipleChoices &&
+			!strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "json") {
+			_, copyErr := io.Copy(req.ResponseWriter, response.Body)
+			_ = response.Body.Close()
+			c.observeResponse(
+				req,
+				response.StatusCode,
+				requestID,
+				time.Since(started),
+				copyErr,
+			)
+			return copyErr
+		}
+
+		responseBody, readErr := readAllLimited(response.Body, c.maxResponseBytes)
+		_ = response.Body.Close()
 		if readErr != nil {
 			lastErr = readErr
+			c.observeResponse(
+				req,
+				response.StatusCode,
+				requestID,
+				time.Since(started),
+				readErr,
+			)
 			break
-		}
-		if c.Hook != nil {
-			c.Hook.OnResponse(observability.Event{Operation: req.Operation, Platform: req.Platform, StatusCode: response.StatusCode, RequestID: requestID, Duration: time.Since(started)})
 		}
 		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 			lastErr = wxerrors.ParsePlatformError(req.Platform, req.Operation, response.StatusCode, responseBody, requestID)
-			if attempt < policy.MaxAttempts && policy.RetryStatus[response.StatusCode] {
+			c.observeResponse(
+				req,
+				response.StatusCode,
+				requestID,
+				time.Since(started),
+				lastErr,
+			)
+			if attempt < policy.MaxAttempts &&
+				retryableRequest(req) &&
+				policy.RetryStatus[response.StatusCode] {
 				if err := waitBackoff(ctx, policy.Backoff(attempt)); err != nil {
 					return err
 				}
@@ -115,22 +205,114 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 			}
 			return lastErr
 		}
+		if platformErr := wxerrors.ParseResponseError(
+			req.Platform,
+			req.Operation,
+			response.StatusCode,
+			responseBody,
+			requestID,
+		); platformErr != nil {
+			c.observeResponse(
+				req,
+				response.StatusCode,
+				requestID,
+				time.Since(started),
+				platformErr,
+			)
+			return platformErr
+		}
+		if req.ResponseWriter != nil {
+			_, writeErr := req.ResponseWriter.Write(responseBody)
+			c.observeResponse(
+				req,
+				response.StatusCode,
+				requestID,
+				time.Since(started),
+				writeErr,
+			)
+			return writeErr
+		}
 		if req.Result == nil || len(responseBody) == 0 || response.StatusCode == http.StatusNoContent {
+			c.observeResponse(req, response.StatusCode, requestID, time.Since(started), nil)
 			return nil
 		}
 		if bytesResult, ok := req.Result.(*[]byte); ok {
 			*bytesResult = append((*bytesResult)[:0], responseBody...)
+			c.observeResponse(req, response.StatusCode, requestID, time.Since(started), nil)
 			return nil
 		}
 		if err := json.Unmarshal(responseBody, req.Result); err != nil {
-			return fmt.Errorf("decode %s response: %w", req.Operation, err)
+			decodeErr := fmt.Errorf("decode %s response: %w", req.Operation, err)
+			c.observeResponse(
+				req,
+				response.StatusCode,
+				requestID,
+				time.Since(started),
+				decodeErr,
+			)
+			return decodeErr
 		}
+		c.observeResponse(req, response.StatusCode, requestID, time.Since(started), nil)
 		return nil
 	}
 	if lastErr != nil {
 		return lastErr
 	}
 	return fmt.Errorf("request %s failed", req.Operation)
+}
+
+func readAllLimited(reader io.Reader, limit int64) ([]byte, error) {
+	if limit < 0 {
+		return io.ReadAll(reader)
+	}
+	data, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, ErrResponseTooLarge
+	}
+	return data, nil
+}
+
+func (c *Client) observeResponse(
+	req request.Request,
+	statusCode int,
+	requestID string,
+	duration time.Duration,
+	err error,
+) {
+	if c.hook == nil {
+		return
+	}
+	c.hook.OnResponse(observability.Event{
+		Operation:  req.Operation,
+		Platform:   req.Platform,
+		StatusCode: statusCode,
+		RequestID:  requestID,
+		Duration:   duration,
+		Err:        err,
+	})
+}
+
+func retryableRequest(req request.Request) bool {
+	switch req.RetryMode {
+	case request.RetryNever:
+		return false
+	case request.RetryAlways:
+		return true
+	}
+
+	switch req.Method {
+	case http.MethodGet,
+		http.MethodHead,
+		http.MethodOptions,
+		http.MethodPut,
+		http.MethodDelete:
+		return true
+	default:
+		return false
+	}
 }
 
 func resolveURL(base, path string, query url.Values) (string, error) {

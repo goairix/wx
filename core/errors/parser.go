@@ -1,6 +1,7 @@
 package errors
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -58,6 +59,54 @@ func ParsePlatformError(platform, operation string, status int, body []byte, req
 		err.RequestID = payload.CommonOut.RequestID
 	}
 	return err
+}
+
+// ParseResponseError recognizes platform error envelopes returned with a
+// successful HTTP status. A nil result means the body does not describe a
+// platform failure.
+func ParseResponseError(
+	platform string,
+	operation string,
+	status int,
+	body []byte,
+	requestID string,
+) *Error {
+	if len(bytes.TrimSpace(body)) == 0 {
+		return nil
+	}
+	var payload struct {
+		ErrCode   json.RawMessage `json:"errcode"`
+		ErrMsg    string          `json:"errmsg"`
+		CommonOut struct {
+			RequestID  string          `json:"requestId"`
+			ResultCode json.RawMessage `json:"resultCode"`
+			ErrMsg     string          `json:"errMsg"`
+		} `json:"commonOut"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil
+	}
+
+	code := rawValueString(payload.ErrCode)
+	message := payload.ErrMsg
+	if code == "" {
+		code = rawValueString(payload.CommonOut.ResultCode)
+		message = payload.CommonOut.ErrMsg
+	}
+	if code == "" || code == "0" {
+		return nil
+	}
+	if requestID == "" {
+		requestID = payload.CommonOut.RequestID
+	}
+	return &Error{
+		Platform:   platform,
+		Operation:  operation,
+		HTTPStatus: status,
+		Code:       code,
+		Message:    message,
+		RequestID:  requestID,
+	}
 }
 
 func rawValueString(raw json.RawMessage) string {

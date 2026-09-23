@@ -40,6 +40,10 @@ log.Print(profile.Nickname)
 
 所有出站网络方法都把 `context.Context` 放在 receiver 后的第一个参数。请为入口请求设置超时，并把同一个 context 传到 SDK；取消会传播到凭据刷新、重试等待和 HTTP 请求。
 
+启用 `RetryPolicy` 后，GET、HEAD、OPTIONS、PUT 和 DELETE 默认允许重试。POST 默认不重试，
+避免发送消息、创建资源等操作被重复执行；只有确认某个 POST 操作具备幂等性时，底层请求才应
+显式使用 `request.RetryAlways`。
+
 ## 平台入口
 
 | 包 | 根客户端 | 主要能力 |

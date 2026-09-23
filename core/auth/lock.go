@@ -27,6 +27,7 @@ type refreshCall struct {
 	done         chan struct{}
 	credential   Credential
 	err          error
+	retryWaiters bool
 	participants int
 }
 
@@ -65,10 +66,12 @@ func finishRefresh(
 	call *refreshCall,
 	credential Credential,
 	err error,
+	retryWaiters bool,
 ) {
 	refreshCalls.Lock()
 	call.credential = credential
 	call.err = err
+	call.retryWaiters = retryWaiters
 	close(call.done)
 	if refreshCalls.entries[callKey] == call {
 		delete(refreshCalls.entries, callKey)
@@ -76,12 +79,12 @@ func finishRefresh(
 	refreshCalls.Unlock()
 }
 
-func waitRefresh(ctx context.Context, call *refreshCall) (Credential, error) {
+func waitRefresh(ctx context.Context, call *refreshCall) (Credential, error, bool) {
 	select {
 	case <-call.done:
-		return call.credential, call.err
+		return call.credential, call.err, call.retryWaiters
 	case <-ctx.Done():
-		return Credential{}, ctx.Err()
+		return Credential{}, ctx.Err(), false
 	}
 }
 

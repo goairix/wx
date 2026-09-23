@@ -12,7 +12,6 @@ import (
 	"github.com/goairix/wx/v2/core/auth"
 	wxerrors "github.com/goairix/wx/v2/core/errors"
 	"github.com/goairix/wx/v2/core/request"
-	"github.com/goairix/wx/v2/core/transport"
 	"github.com/goairix/wx/v2/openplatform/internal/api"
 )
 
@@ -21,12 +20,12 @@ type CredentialFactory func(appID, refreshToken string) *auth.Manager
 
 // Client creates code clients scoped to an authorized miniapp.
 type Client struct {
-	transport *transport.Client
+	transport request.Caller
 	factory   CredentialFactory
 }
 
 // NewClient constructs a miniapp code client factory.
-func NewClient(transportClient *transport.Client, factory CredentialFactory) *Client {
+func NewClient(transportClient request.Caller, factory CredentialFactory) *Client {
 	return &Client{
 		transport: transportClient,
 		factory:   factory,
@@ -43,7 +42,7 @@ func (c *Client) ForAuthorizer(appID, refreshToken string) *AuthorizerClient {
 
 // AuthorizerClient manages the code lifecycle of one authorized miniapp.
 type AuthorizerClient struct {
-	transport  *transport.Client
+	transport  request.Caller
 	credential *auth.Manager
 }
 

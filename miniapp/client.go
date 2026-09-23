@@ -58,8 +58,12 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 	}
 	tr := state.transport
 	if tr == nil {
-		tr = transport.New(state.httpClient, base, state.retry)
-		tr.Hook = state.hook
+		tr = transport.New(
+			state.httpClient,
+			base,
+			state.retry,
+			transport.WithHook(state.hook),
+		)
 	}
 	c := &Client{config: config, transport: tr}
 	var cc corecache.Cache = state.cache
