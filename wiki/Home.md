@@ -21,7 +21,7 @@
 - [凭据与缓存](#凭据与缓存)
 - [重试策略](#重试策略)
 - [错误处理](#错误处理)
-- [请求观测](#请求观测)
+- [日志与请求观测](#日志与请求观测)
 - [回调处理](#回调处理)
 - [文件与二进制响应](#文件与二进制响应)
 - [测试](#测试)
@@ -74,9 +74,11 @@ profile, err := client.Users().Info(ctx, openID)
 import (
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	corecache "github.com/goairix/wx/v2/core/cache"
+	"github.com/goairix/wx/v2/core/logging"
 	"github.com/goairix/wx/v2/core/observability"
 	"github.com/goairix/wx/v2/core/transport"
 	"github.com/goairix/wx/v2/official"
@@ -104,6 +106,10 @@ func newOfficialClient(
 		},
 	}
 
+	logger := logging.NewText(os.Stdout, logging.TextOptions{
+		MinLevel: logging.LevelDebug,
+	})
+
 	hook := observability.HookFunc(func(event observability.Event) {
 		log.Printf(
 			"platform=%s operation=%s status=%d duration=%s request_id=%s err=%v",
@@ -124,13 +130,14 @@ func newOfficialClient(
 		official.WithHTTPClient(httpClient),
 		official.WithCache(sharedCache),
 		official.WithRetryPolicy(retryPolicy),
+		official.WithLogger(logger),
 		official.WithHook(hook),
 	)
 }
 ```
 
 `sharedCache` 需要实现 `core/cache.Cache`，通常由 Redis、数据库或内部缓存服务适配器提供。
-业务入口仍然只调用领域方法并传入 context，缓存、重试和观测逻辑不需要散落在业务代码里。
+业务入口仍然只调用领域方法并传入 context，缓存、重试、日志和观测逻辑不需要散落在业务代码里。
 
 ### core 包与使用入口
 
@@ -141,7 +148,8 @@ func newOfficialClient(
 | `core/request` | 描述平台无关的请求、重试模式和响应元数据 | 由领域模块构造，业务代码通常不直接使用 | 调用尚未封装的接口或开发新的领域模块时使用 |
 | `core/transport` | 处理 HTTP、响应限制、重试和错误解析 | 通过平台的 `WithHTTPClient`、`WithRetryPolicy`、`WithBaseURL` 配置 | 需要代理、网关、连接池、自定义超时或复用 Transport 时配置 |
 | `core/errors` | 保存平台、操作名、状态码、错误码和 request ID | 对领域方法返回的错误使用标准库 `errors.Is`、`errors.As` | 需要按平台错误码分支或记录排障字段时使用 |
-| `core/observability` | 为每次 HTTP 尝试产生请求和响应事件 | 创建 `observability.Hook`，通过平台 `WithHook` 注入 | 需要日志、指标、trace 或统计重试次数时配置 |
+| `core/logging` | 输出具有统一事件名、级别和字段的请求日志 | 通过平台 `WithLogger` 注入内置或外部 Logger | 需要把 SDK 日志接入应用统一日志系统时配置 |
+| `core/observability` | 为每次 HTTP 尝试产生请求和响应事件 | 创建 `observability.Hook`，通过平台 `WithHook` 注入 | 需要指标、trace 或统计重试次数时配置 |
 | `core/webhook` | 签名校验、AES 解密、消息解析和响应封装 | 从平台客户端调用 `client.Webhook().Handler(...)` | 需要注册回调或自定义错误响应时使用 |
 | `core/random` | 生成密码学安全的随机字符串 | JS SDK 签名和加密回调 nonce 由 SDK 内部生成 | 业务需要同类随机标识时可调用 `random.String` |
 
@@ -152,7 +160,8 @@ func newOfficialClient(
 - **凭据由内部服务统一发放**：公众号、小程序和健康卡可以实现 `core/auth.Provider`，通过平台的凭据 Option 注入。
 - **需要代理或统一网关**：注入自定义 `http.Client`；只有测试或网关场景才覆盖 Base URL。
 - **需要自动重试**：配置 `transport.RetryPolicy`，并确认目标操作允许安全重复执行。
-- **需要日志、指标或 tracing**：实现 `observability.Hook`，通过 `WithHook` 注入。
+- **需要统一日志**：使用内置 `logging.NewText`，或实现 `logging.Logger` 后通过 `WithLogger` 注入。
+- **需要指标或 tracing**：实现 `observability.Hook`，通过 `WithHook` 注入。
 - **需要接收平台回调**：在平台 `Config` 中设置回调参数，再注册 `client.Webhook().Handler(...)`。
 - **需要测试业务代码**：替换 Base URL、HTTP Client、缓存或凭据 Provider，不访问真实平台。
 
@@ -163,7 +172,7 @@ func newOfficialClient(
 - 内存缓存、共享缓存和外部凭据服务：[凭据与缓存](#凭据与缓存)
 - 重试次数、退避策略和幂等边界：[重试策略](#重试策略)
 - 平台错误码、request ID 和错误链：[错误处理](#错误处理)
-- 日志、指标与 tracing 接入：[请求观测](#请求观测)
+- 日志、指标与 tracing 接入：[日志与请求观测](#日志与请求观测)
 - URL 验证、消息解密和事件处理：[回调处理](#回调处理)
 - Base URL、固定依赖和本地服务测试：[测试](#测试)
 
@@ -182,12 +191,12 @@ flowchart TB
 
     Client --- Platforms[official / miniapp / mobileapp / openplatform / work / healthcard]
     Domain --- Domains[用户 / 菜单 / 消息 / OAuth / 通讯录 / 客户联系 / 健康卡]
-    Core --- Capabilities[auth / cache / request / transport / errors / observability / webhook / random]
+    Core --- Capabilities[auth / cache / request / transport / errors / logging / observability / webhook / random]
 ```
 
-- **平台根客户端**：保存平台身份、HTTP Client、缓存、重试策略和观测 Hook，并为领域模块共享这些依赖。
+- **平台根客户端**：保存平台身份、HTTP Client、缓存、重试策略、Logger 和观测 Hook，并为领域模块共享这些依赖。
 - **领域模块**：提供用户、菜单、消息、OAuth、通讯录等类型化方法，调用方不需要拼接 URL 或自行解析响应。
-- **共享核心能力**：位于 `core/*`，由平台客户端统一组装。只有定制缓存、传输、凭据、观测或回调行为时，
+- **共享核心能力**：位于 `core/*`，由平台客户端统一组装。只有定制缓存、传输、凭据、日志、观测或回调行为时，
   使用者才需要直接实现这些接口。
 
 平台包之间彼此独立。选择一个平台不会把其他平台的配置和业务模型带入当前客户端。
@@ -208,6 +217,7 @@ flowchart LR
     Context[context 超时与取消] -.贯穿.-> Domain
     Context -.-> Credential
     Context -.-> Transport
+    Logger[结构化 Logger] -.记录.-> Transport
     Hook[请求观测 Hook] -.记录.-> Transport
     Hook -.记录.-> Parse
 ```
@@ -217,7 +227,7 @@ flowchart LR
 3. Transport 编码请求，使用传入的 `context.Context` 和 HTTP Client 发送。
 4. 重试策略根据请求方法、请求重试模式、网络错误或 HTTP 状态决定是否再次尝试。
 5. 成功响应解码到结果 DTO；HTTP 或平台业务错误转换为 `*core/errors.Error`。
-6. 请求观测 Hook 记录操作名、耗时、状态和 request ID，context 取消会终止刷新、发送和等待重试。
+6. Logger 输出请求生命周期事件，观测 Hook 记录每次尝试的指标和 trace 数据；context 取消会终止刷新、发送和等待重试。
 
 `NewClient` 只校验配置和组装依赖，不会访问网络。首次业务调用可能触发凭据请求，因此客户端构造成功
 不代表远端身份和权限已经验证。
@@ -269,7 +279,7 @@ log.Printf("nickname=%s", profile.Nickname)
 客户端通常由两部分配置：
 
 1. `Config` 保存平台身份、密钥和回调参数。
-2. `Option` 注入 HTTP 客户端、缓存、重试、观测钩子等运行环境依赖。
+2. `Option` 注入 HTTP 客户端、缓存、重试、日志、观测钩子等运行环境依赖。
 
 ```go
 client, err := official.NewClient(
@@ -282,6 +292,7 @@ client, err := official.NewClient(
 	official.WithHTTPClient(httpClient),
 	official.WithCache(cacheStore),
 	official.WithRetryPolicy(retryPolicy),
+	official.WithLogger(logger),
 	official.WithHook(hook),
 )
 ```
@@ -1128,29 +1139,102 @@ if errors.Is(err, transport.ErrResponseTooLarge) {
 }
 ```
 
-## 请求观测
+## 日志与请求观测
 
-`core/observability.Hook` 在每次 HTTP 尝试开始和结束时接收事件：
+SDK 默认静默，不会直接调用标准库 `log`。六个平台根客户端都可以通过 `WithLogger` 接入日志。
+下面使用 SDK 内置的单行文本日志：
+
+```go
+logger := logging.NewText(os.Stdout, logging.TextOptions{
+	MinLevel: logging.LevelDebug,
+	Color:    true,
+})
+
+client, err := miniapp.NewClient(
+	config,
+	miniapp.WithLogger(logger),
+)
+```
+
+默认最低级别是 `Info`，因此只会看到重试和失败。将最低级别设为 `Debug` 后，可以看到完整生命周期：
+
+| 事件 | 级别 | 触发时机 |
+| --- | --- | --- |
+| `wx.request.started` | Debug | 一次 HTTP 尝试开始 |
+| `wx.request.completed` | Debug | 一次 HTTP 尝试成功完成 |
+| `wx.request.retrying` | Warn | 当前尝试失败并将再次尝试 |
+| `wx.request.failed` | Error | 请求最终失败，或发送前被取消、无法构造 |
+
+输出示例：
+
+```text
+2026-09-23T22:21:35.123+08:00 DEBUG wx.request.started platform=miniapp operation=miniapp.auth.code2session method=GET attempt=1 max_attempts=1
+2026-09-23T22:21:35.162+08:00 ERROR wx.request.failed platform=miniapp operation=miniapp.auth.code2session method=GET status=200 code=40029 attempt=1 max_attempts=1 duration=39ms error="miniapp miniapp.auth.code2session: invalid code, rid: original-rid"
+```
+
+错误文本保持平台返回的原始内容，方便按官方或社区资料检索。`request_id` 只从响应头或平台的结构化
+响应字段读取，不会从 `errmsg` 文本中猜测。
+
+### 接入现有日志组件
+
+应用已有日志库时，实现 `logging.Logger`，或使用 `logging.LoggerFunc` 适配：
+
+```go
+wxLogger := logging.LoggerFunc(func(
+	ctx context.Context,
+	level logging.Level,
+	event string,
+	attrs ...logging.Attr,
+) {
+	fields := make(map[string]interface{}, len(attrs))
+	for _, attr := range attrs {
+		fields[attr.Key] = attr.Value
+	}
+	appLogger.Log(ctx, level.String(), event, fields)
+})
+
+client, err := work.NewClient(config, work.WithLogger(wxLogger))
+```
+
+传给 Logger 的 context 与业务调用使用的是同一个 context，可以读取已有 trace ID 或业务 request ID。
+适配器应尽快返回，异步缓冲和丢弃策略由应用日志组件负责。
+
+直接使用 `core/transport.New` 时配置 `transport.WithLogger`。通过平台 `WithTransport` 注入自建
+transport 时，Logger 也在该 transport 上配置；平台的 `WithLogger` 只配置平台自己创建的 transport。
+
+### Logger 与 Hook 的分工
+
+Logger 负责统一的结构化日志。`core/observability.Hook` 适合指标和 tracing，在每次 HTTP 尝试开始
+和结束时接收事件：
 
 ```go
 hook := observability.HookFunc(func(event observability.Event) {
-	log.Printf(
-		"platform=%s operation=%s status=%d duration=%s request_id=%s err=%v",
+	requestAttempts.WithLabelValues(
 		event.Platform,
 		event.Operation,
-		event.StatusCode,
-		event.Duration,
-		event.RequestID,
-		event.Err,
-	)
+	).Inc()
 })
+
+client, err := official.NewClient(
+	config,
+	official.WithLogger(wxLogger),
+	official.WithHook(hook),
+)
 ```
 
-`HookFunc` 会同时接收 request 和 response 事件。request 事件只有平台与操作名；response 事件
-包含状态码、耗时、request ID 和错误。发生重试时，每次尝试都会产生一组事件。
+Logger 和 Hook 可以同时使用。Hook 的 request 事件只有平台与操作名；response 事件包含状态码、
+耗时、request ID 和错误。发生重试时，每次尝试都会产生一组 Hook 事件。
 
-Hook 适合接入日志、指标和 tracing。实现中应避免阻塞，不要在 hook 中记录凭据、查询参数、
-请求体或响应体。
+### 日志字段与数据安全
+
+日志可能包含 `platform`、`operation`、`method`、`status`、`code`、`attempt`、
+`max_attempts`、`next_attempt`、`duration`、`retry_delay`、`request_id` 和 `error`。没有值的字段
+不会输出。
+
+SDK 不记录完整 URL、查询参数、请求头、请求体或响应体，网络错误中的请求 URL 也会在写日志前
+移除；方法返回给调用方的错误保持不变。平台错误文本会原样写入 `error` 字段，日志平台应设置合适的
+访问权限和保存期限。应用代码不要把 access token、refresh token、session key、一次性 code 或
+个人信息追加到日志字段中。
 
 ## 回调处理
 
@@ -1390,7 +1474,8 @@ POST 默认不重试，以避免重复发送消息、重复创建资源或重复
 - [core/auth](https://pkg.go.dev/github.com/goairix/wx/v2/core/auth)：凭据生命周期
 - [core/cache](https://pkg.go.dev/github.com/goairix/wx/v2/core/cache)：缓存接口与内存实现
 - [core/errors](https://pkg.go.dev/github.com/goairix/wx/v2/core/errors)：结构化错误与错误链
-- [core/observability](https://pkg.go.dev/github.com/goairix/wx/v2/core/observability)：请求观测 hook
+- [core/logging](https://pkg.go.dev/github.com/goairix/wx/v2/core/logging)：结构化日志接口与文本实现
+- [core/observability](https://pkg.go.dev/github.com/goairix/wx/v2/core/observability)：指标与 tracing hook
 - [core/random](https://pkg.go.dev/github.com/goairix/wx/v2/core/random)：安全随机字符串
 - [core/request](https://pkg.go.dev/github.com/goairix/wx/v2/core/request)：平台无关请求模型
 - [core/transport](https://pkg.go.dev/github.com/goairix/wx/v2/core/transport)：HTTP、重试和响应处理

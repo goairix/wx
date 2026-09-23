@@ -21,7 +21,7 @@ defer cancel()
 session, err := client.Auth().Code2Session(ctx, code)
 ```
 
-所有出站网络方法都把 `context.Context` 放在第一个参数。可使用 `WithHTTPClient`、`WithBaseURL`、`WithRetryPolicy`、`WithCache` 和 `WithHook` 注入运行环境；外部凭据服务可通过 `WithCredentialProvider` 接入。
+所有出站网络方法都把 `context.Context` 放在第一个参数。可使用 `WithHTTPClient`、`WithBaseURL`、`WithRetryPolicy`、`WithCache`、`WithLogger` 和 `WithHook` 注入运行环境；外部凭据服务可通过 `WithCredentialProvider` 接入。
 
 ## 领域入口
 

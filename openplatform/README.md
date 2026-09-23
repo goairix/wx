@@ -19,6 +19,7 @@ client, err := openplatform.NewClient(
     openplatform.WithHTTPClient(httpClient),
     openplatform.WithCache(cacheStore),
     openplatform.WithRetryPolicy(retryPolicy),
+    openplatform.WithLogger(logger),
     openplatform.WithHook(hook),
 )
 if err != nil {

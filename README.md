@@ -16,7 +16,7 @@ SDK 以平台根客户端为入口，按业务领域组织接口，并提供统�
 - 所有出站请求接收 `context.Context`，支持超时和主动取消
 - 自动获取、缓存和提前刷新服务端凭据
 - 使用标准库错误链，提供结构化平台错误
-- 支持注入 HTTP 客户端、缓存、凭据提供器、重试策略和观测钩子
+- 支持注入 HTTP 客户端、缓存、凭据提供器、重试策略、日志和观测钩子
 - 提供公众号、小程序、开放平台和企业微信的 typed webhook adapter
 - 默认限制缓冲响应大小，大文件下载支持流式写入
 - 核心包不依赖第三方错误库和日志库
@@ -116,12 +116,36 @@ client, err := official.NewClient(
 	official.WithHTTPClient(httpClient),
 	official.WithCache(sharedCache),
 	official.WithRetryPolicy(retryPolicy),
+	official.WithLogger(logger),
 	official.WithHook(hook),
 )
 ```
 
 未提供 HTTP 客户端时，SDK 使用超时为 30 秒的默认客户端。未提供缓存时，SDK 使用并发安全的
 进程内缓存。多实例部署可以实现 [`core/cache.Cache`](core/cache/cache.go) 并注入共享存储。
+
+## 日志与观测
+
+SDK 默认不输出日志。可以使用内置文本日志，也可以实现 `core/logging.Logger`，把请求日志接入
+应用已有的日志组件：
+
+```go
+logger := logging.NewText(os.Stdout, logging.TextOptions{
+	MinLevel: logging.LevelDebug,
+})
+
+client, err := miniapp.NewClient(
+	config,
+	miniapp.WithLogger(logger),
+)
+```
+
+`wx.request.started` 和 `wx.request.completed` 使用 Debug，`wx.request.retrying` 使用 Warn，
+`wx.request.failed` 使用 Error。日志只包含平台、操作、方法、状态、错误码、尝试次数、耗时和
+request ID 等安全字段，不记录 URL、查询参数、请求头或正文。
+
+`core/observability.Hook` 用于指标和 tracing，可以与 Logger 同时配置。完整的事件字段、外部日志
+适配示例和安全说明见 [`core/logging`](core/logging/README.md)。
 
 ## 错误处理
 

@@ -8,10 +8,14 @@ client := transport.New(
     httpClient,
     "https://api.weixin.qq.com",
     transport.RetryPolicy{MaxAttempts: 3},
+    transport.WithLogger(logger),
     transport.WithHook(hook),
     transport.WithMaxResponseBytes(32<<20),
 )
 ```
+
+transport 默认不输出日志。`WithLogger` 接收 `core/logging.Logger`，输出请求开始、成功、重试和
+最终失败事件；`WithHook` 可同时用于指标和 tracing。日志不会记录 URL、查询参数、请求头或正文。
 
 缓冲响应默认上限为 32 MiB，超过上限返回 `transport.ErrResponseTooLarge`。设置负数
 可关闭缓冲上限。使用 `request.ResponseWriter` 的二进制响应直接流式写出，不受缓冲

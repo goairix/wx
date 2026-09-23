@@ -23,7 +23,7 @@ if err != nil {
 user, err := client.OAuth().UserInfo(ctx, token.OpenID)
 ```
 
-`OAuth()` 还提供 `LoginCodeAccessToken` 和 `UserFromCode`。所有网络方法都把 `context.Context` 放在第一个参数。可用 `WithHTTPClient`、`WithBaseURL`、`WithCache`、`WithRetryPolicy` 和 `WithHook` 注入运行环境。
+`OAuth()` 还提供 `LoginCodeAccessToken` 和 `UserFromCode`。所有网络方法都把 `context.Context` 放在第一个参数。可用 `WithHTTPClient`、`WithBaseURL`、`WithCache`、`WithRetryPolicy`、`WithLogger` 和 `WithHook` 注入运行环境。
 
 ## 错误处理
 

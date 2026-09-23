@@ -100,7 +100,7 @@ client, err := healthcard.NewClient(
 
 常用选项：
 
-- `WithHTTPClient`、`WithBaseURL`、`WithRetry` 和 `WithHook` 配置共享 transport。
+- `WithHTTPClient`、`WithBaseURL`、`WithRetry`、`WithLogger` 和 `WithHook` 配置共享 transport。
 - `WithCache` 注入 `core/cache.Cache`，多实例部署可使用共享实现。
 - `WithCredentialProvider` 或 `WithCredentialManager` 接入统一凭证服务。
 - `WithAppToken` 预置已有凭证。

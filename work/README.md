@@ -1,6 +1,6 @@
 # 企业微信
 
-`work` 是 v2 的企业微信客户端。所有网络方法都接收 `context.Context`，共享同一个 HTTP 传输层、凭据缓存、重试策略和观测钩子。底层分别由 `core/transport`、`core/auth`、`core/cache` 和 `core/observability` 提供，不依赖旧 `support` 聚合包。
+`work` 是 v2 的企业微信客户端。所有网络方法都接收 `context.Context`，共享同一个 HTTP 传输层、凭据缓存、重试策略、日志和观测钩子。底层分别由 `core/transport`、`core/auth`、`core/cache`、`core/logging` 和 `core/observability` 提供，不依赖旧 `support` 聚合包。
 
 ## 安装
 
@@ -32,6 +32,7 @@ client, err := work.NewClient(
     work.WithBaseURL("https://qyapi.example.com"),
     work.WithCoreCache(sharedCache),
     work.WithRetryPolicy(retryPolicy),
+    work.WithLogger(logger),
     work.WithHook(hook),
 )
 ```

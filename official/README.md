@@ -21,7 +21,7 @@ defer cancel()
 info, err := client.Users().Info(ctx, "openid")
 ```
 
-所有出站网络方法都把 `context.Context` 放在第一个参数。`NewClient` 只校验配置和组装对象，不发起网络请求。可使用 `WithHTTPClient`、`WithBaseURL`、`WithRetryPolicy`、`WithCache` 和 `WithHook` 注入运行环境。
+所有出站网络方法都把 `context.Context` 放在第一个参数。`NewClient` 只校验配置和组装对象，不发起网络请求。可使用 `WithHTTPClient`、`WithBaseURL`、`WithRetryPolicy`、`WithCache`、`WithLogger` 和 `WithHook` 注入运行环境。
 
 ## 领域入口
 
