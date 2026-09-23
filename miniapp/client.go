@@ -33,27 +33,41 @@ type Client struct {
 
 // NewClient constructs a context-aware miniapp client.
 func NewClient(config Config, opts ...Option) (*Client, error) {
-	if strings.TrimSpace(config.AppID) == "" || strings.TrimSpace(config.AppSecret) == "" {
-		return nil, fmt.Errorf("miniapp: AppID and AppSecret are required")
-	}
 	state := &option{}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(state)
 		}
 	}
+	if strings.TrimSpace(config.AppID) == "" {
+		return nil, fmt.Errorf("miniapp: AppID is required")
+	}
+	if strings.TrimSpace(config.AppSecret) == "" && state.provider == nil {
+		return nil, fmt.Errorf("miniapp: AppSecret is required without a credential provider")
+	}
 	base := state.baseURL
 	if base == "" {
 		base = defaultBaseURL
 	}
-	tr := transport.New(state.httpClient, base, state.retry)
-	tr.Hook = state.hook
+	tr := state.transport
+	if tr == nil {
+		tr = transport.New(state.httpClient, base, state.retry)
+		tr.Hook = state.hook
+	}
 	c := &Client{config: config, transport: tr}
 	var cc corecache.Cache = state.cache
 	if cc == nil {
 		cc = corecache.NewMemory()
 	}
-	c.token = authpkg.NewManager("miniapp", config.AppID, cc, authpkg.ProviderFunc(c.fetchToken))
+	provider := state.provider
+	if provider == nil {
+		provider = authpkg.ProviderFunc(c.fetchToken)
+	}
+	identity := state.identity
+	if identity == "" {
+		identity = config.AppID
+	}
+	c.token = authpkg.NewManager("miniapp", identity, cc, provider)
 	c.auth = auth.New(tr, auth.Config{AppID: config.AppID, AppSecret: config.AppSecret})
 	c.users = user.New(tr, c.token)
 	c.messages = message.New(tr, c.token)

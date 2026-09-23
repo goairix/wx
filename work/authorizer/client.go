@@ -24,6 +24,13 @@ func NewClient(executor *api.Client) *Client {
 	}
 }
 
+// NewWithTransport constructs an authorizer client from a shared transport.
+func NewWithTransport(transportClient *transport.Client) *Client {
+	return &Client{
+		transport: transportClient,
+	}
+}
+
 // PermanentCodeResult contains an authorized enterprise permanent code.
 type PermanentCodeResult struct {
 	PermanentCode string                 `json:"permanent_code"`

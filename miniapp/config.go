@@ -3,6 +3,7 @@ package miniapp
 import (
 	"net/http"
 
+	"github.com/goairix/wx/v2/core/auth"
 	corecache "github.com/goairix/wx/v2/core/cache"
 	"github.com/goairix/wx/v2/core/observability"
 	"github.com/goairix/wx/v2/core/transport"
@@ -22,6 +23,9 @@ type option struct {
 	cache      corecache.Cache
 	retry      transport.RetryPolicy
 	hook       observability.Hook
+	transport  *transport.Client
+	provider   auth.Provider
+	identity   string
 }
 
 // Option customizes a miniapp client.
@@ -54,5 +58,20 @@ func WithRetryPolicy(p transport.RetryPolicy) Option {
 func WithHook(h observability.Hook) Option {
 	return func(o *option) {
 		o.hook = h
+	}
+}
+
+// WithTransport reuses an existing core transport.
+func WithTransport(client *transport.Client) Option {
+	return func(o *option) {
+		o.transport = client
+	}
+}
+
+// WithCredentialProvider configures externally managed server credentials.
+func WithCredentialProvider(identity string, provider auth.Provider) Option {
+	return func(o *option) {
+		o.identity = identity
+		o.provider = provider
 	}
 }

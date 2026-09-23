@@ -3,6 +3,7 @@ package official
 import (
 	"net/http"
 
+	"github.com/goairix/wx/v2/core/auth"
 	corecache "github.com/goairix/wx/v2/core/cache"
 	"github.com/goairix/wx/v2/core/observability"
 	"github.com/goairix/wx/v2/core/transport"
@@ -33,6 +34,9 @@ type option struct {
 	httpClient          *http.Client
 	retry               transport.RetryPolicy
 	hook                observability.Hook
+	transport           *transport.Client
+	credentialProvider  auth.Provider
+	credentialIdentity  string
 }
 
 type Option func(*option)
@@ -50,18 +54,36 @@ func WithCache(value interface{}) Option {
 }
 
 func WithCacheKeyPrefix(cacheKeyPrefix string) Option {
-	return func(o *option) { o.cacheKeyPrefix = cacheKeyPrefix }
+	return func(o *option) {
+		o.cacheKeyPrefix = cacheKeyPrefix
+	}
 }
-func WithLocker(locker lock.Locker) Option { return func(o *option) { o.locker = locker } }
+
+func WithLocker(locker lock.Locker) Option {
+	return func(o *option) {
+		o.locker = locker
+	}
+}
+
 func WithAccessTokenProvider(provider contracts.AccessTokenProvider) Option {
-	return func(o *option) { o.accessTokenProvider = provider }
+	return func(o *option) {
+		o.accessTokenProvider = provider
+	}
 }
 
 // WithBaseURL overrides the API endpoint, primarily for tests and proxies.
-func WithBaseURL(baseURL string) Option { return func(o *option) { o.baseURL = baseURL } }
+func WithBaseURL(baseURL string) Option {
+	return func(o *option) {
+		o.baseURL = baseURL
+	}
+}
 
 // WithHTTPClient injects the HTTP client used by the v2 transport.
-func WithHTTPClient(client *http.Client) Option { return func(o *option) { o.httpClient = client } }
+func WithHTTPClient(client *http.Client) Option {
+	return func(o *option) {
+		o.httpClient = client
+	}
+}
 
 // WithRetryPolicy configures v2 transport retries.
 func WithRetryPolicy(policy transport.RetryPolicy) Option {
@@ -69,4 +91,23 @@ func WithRetryPolicy(policy transport.RetryPolicy) Option {
 }
 
 // WithHook attaches v2 request observability hooks.
-func WithHook(hook observability.Hook) Option { return func(o *option) { o.hook = hook } }
+func WithHook(hook observability.Hook) Option {
+	return func(o *option) {
+		o.hook = hook
+	}
+}
+
+// WithTransport reuses an existing core transport.
+func WithTransport(client *transport.Client) Option {
+	return func(o *option) {
+		o.transport = client
+	}
+}
+
+// WithCredentialProvider configures externally managed server credentials.
+func WithCredentialProvider(identity string, provider auth.Provider) Option {
+	return func(o *option) {
+		o.credentialIdentity = identity
+		o.credentialProvider = provider
+	}
+}
