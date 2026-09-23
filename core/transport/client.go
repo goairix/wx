@@ -192,6 +192,9 @@ func encodeBody(body interface{}) ([]byte, error) {
 	if body == nil {
 		return nil, nil
 	}
+	if raw, ok := body.([]byte); ok {
+		return append([]byte(nil), raw...), nil
+	}
 	var buffer bytes.Buffer
 	encoder := json.NewEncoder(&buffer)
 	encoder.SetEscapeHTML(false)
