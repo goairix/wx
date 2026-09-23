@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
@@ -29,6 +30,9 @@ const wechatPKCS7BlockSize = 32
 // unpadded base64 key supplied by the platform and receiverID is the expected
 // account or enterprise identifier.
 func DecryptMessage(encodingAESKey, encrypted, receiverID string) ([]byte, error) {
+	if receiverID == "" {
+		return nil, ErrInvalidReceiver
+	}
 	key, err := decodeAESKey(encodingAESKey)
 	if err != nil {
 		return nil, err
@@ -68,6 +72,45 @@ func DecryptMessage(encodingAESKey, encrypted, receiverID string) ([]byte, error
 		return nil, ErrInvalidReceiver
 	}
 	return append([]byte(nil), message...), nil
+}
+
+// EncryptMessage encrypts a WeChat callback response for receiverID.
+func EncryptMessage(
+	encodingAESKey string,
+	message []byte,
+	receiverID string,
+) (string, error) {
+	if receiverID == "" {
+		return "", ErrInvalidReceiver
+	}
+	key, err := decodeAESKey(encodingAESKey)
+	if err != nil {
+		return "", err
+	}
+	randomPrefix := make([]byte, 16)
+	if _, err := rand.Read(randomPrefix); err != nil {
+		return "", fmt.Errorf("webhook: generate encryption prefix: %w", err)
+	}
+	length := make([]byte, 4)
+	binary.BigEndian.PutUint32(length, uint32(len(message)))
+	plain := append(randomPrefix, length...)
+	plain = append(plain, message...)
+	plain = append(plain, receiverID...)
+	padding := wechatPKCS7BlockSize - len(plain)%wechatPKCS7BlockSize
+	plain = append(
+		plain,
+		bytes.Repeat([]byte{byte(padding)}, padding)...,
+	)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrInvalidAESKey, err)
+	}
+	ciphertext := make([]byte, len(plain))
+	cipher.NewCBCEncrypter(block, key[:aes.BlockSize]).CryptBlocks(
+		ciphertext,
+		plain,
+	)
+	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
 func decodeAESKey(value string) ([]byte, error) {

@@ -5,10 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 )
+
+// MaxBodyBytes is the maximum accepted webhook request body size.
+const MaxBodyBytes = 1 << 20
+
+// ErrBodyTooLarge is returned before dispatching an oversized webhook.
+var ErrBodyTooLarge = errors.New("webhook: request body too large")
 
 // Payload is the parsed webhook body. Raw always contains the original body.
 type Payload struct {
@@ -37,7 +44,9 @@ type Response struct {
 }
 
 // EmptyResponse returns a successful empty response.
-func EmptyResponse() Response { return Response{Status: http.StatusOK} }
+func EmptyResponse() Response {
+	return Response{Status: http.StatusOK}
+}
 
 type ErrorResponse func(error) Response
 type Option func(*handler)
@@ -58,7 +67,12 @@ func NewHandler(next Handler, options ...Option) http.Handler {
 }
 
 func newHandler(next Handler, options ...Option) *handler {
-	h := &handler{next: next, errorResponse: func(error) Response { return Response{Status: http.StatusBadRequest} }}
+	h := &handler{
+		next: next,
+		errorResponse: func(error) Response {
+			return Response{Status: http.StatusBadRequest}
+		},
+	}
 	for _, option := range options {
 		if option != nil {
 			option(h)
@@ -97,7 +111,7 @@ func (h *handler) write(w http.ResponseWriter, response Response) {
 }
 
 func readPayload(r *http.Request) (Payload, error) {
-	body, err := io.ReadAll(r.Body)
+	body, err := readBody(r.Body)
 	if err != nil {
 		return Payload{}, err
 	}
@@ -119,6 +133,17 @@ func readPayload(r *http.Request) (Payload, error) {
 	}
 	flattenXML(payload.Values, node)
 	return payload, nil
+}
+
+func readBody(reader io.Reader) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(reader, int64(MaxBodyBytes)+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > MaxBodyBytes {
+		return nil, ErrBodyTooLarge
+	}
+	return body, nil
 }
 
 func contains(value, needle string) bool {

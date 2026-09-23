@@ -9,7 +9,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
+
+	"github.com/goairix/wx/v2/core/random"
 )
 
 // CallbackConfig contains the credentials used to verify a WeChat callback.
@@ -92,7 +96,22 @@ func (h *callbackHandler) verifyURL(writer http.ResponseWriter, request *http.Re
 }
 
 func (h *callbackHandler) deliver(writer http.ResponseWriter, request *http.Request) {
-	body, err := io.ReadAll(request.Body)
+	query := request.URL.Query()
+	isEncrypted := query.Get("msg_signature") != ""
+	if !isEncrypted {
+		err := VerifySignature(
+			h.config.Token,
+			query.Get("timestamp"),
+			query.Get("nonce"),
+			query.Get("signature"),
+		)
+		if err != nil {
+			h.delegate.write(writer, h.delegate.errorResponse(err))
+			return
+		}
+	}
+
+	body, err := readBody(request.Body)
 	if err != nil {
 		h.delegate.write(writer, h.delegate.errorResponse(err))
 		return
@@ -103,14 +122,10 @@ func (h *callbackHandler) deliver(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 
-	query := request.URL.Query()
 	if encrypted == "" {
-		err = VerifySignature(
-			h.config.Token,
-			query.Get("timestamp"),
-			query.Get("nonce"),
-			query.Get("signature"),
-		)
+		if isEncrypted {
+			err = ErrInvalidSignature
+		}
 	} else {
 		err = VerifyMessageSignature(
 			h.config.Token,
@@ -133,7 +148,11 @@ func (h *callbackHandler) deliver(writer http.ResponseWriter, request *http.Requ
 	}
 
 	request.Body = io.NopCloser(bytes.NewReader(body))
-	h.delegate.ServeHTTP(writer, request)
+	if encrypted == "" {
+		h.delegate.ServeHTTP(writer, request)
+		return
+	}
+	h.deliverEncryptedResponse(writer, request)
 }
 
 func validateCallbackConfig(config CallbackConfig) error {
@@ -143,6 +162,9 @@ func validateCallbackConfig(config CallbackConfig) error {
 	if config.EncodingAESKey == "" {
 		return nil
 	}
+	if strings.TrimSpace(config.ReceiverID) == "" {
+		return ErrInvalidReceiver
+	}
 	value := config.EncodingAESKey
 	value += "==="[:(4-len(value)%4)%4]
 	key, err := base64.StdEncoding.DecodeString(value)
@@ -150,6 +172,116 @@ func validateCallbackConfig(config CallbackConfig) error {
 		return ErrInvalidAESKey
 	}
 	return nil
+}
+
+func (h *callbackHandler) deliverEncryptedResponse(
+	writer http.ResponseWriter,
+	request *http.Request,
+) {
+	buffer := newResponseBuffer()
+	h.delegate.ServeHTTP(buffer, request)
+	if buffer.body.Len() == 0 {
+		buffer.writeTo(writer)
+		return
+	}
+
+	encrypted, err := EncryptMessage(
+		h.config.EncodingAESKey,
+		buffer.body.Bytes(),
+		h.config.ReceiverID,
+	)
+	if err != nil {
+		h.delegate.write(writer, h.delegate.errorResponse(err))
+		return
+	}
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	nonce, err := random.String(16)
+	if err != nil {
+		h.delegate.write(writer, h.delegate.errorResponse(err))
+		return
+	}
+	envelope := encryptedResponse{
+		Encrypt: cdata{Value: encrypted},
+		Signature: cdata{Value: MessageSignature(
+			h.config.Token,
+			timestamp,
+			nonce,
+			encrypted,
+		)},
+		Timestamp: timestamp,
+		Nonce:     cdata{Value: nonce},
+	}
+	body, err := xml.Marshal(envelope)
+	if err != nil {
+		h.delegate.write(writer, h.delegate.errorResponse(err))
+		return
+	}
+	copyHeader(writer.Header(), buffer.header)
+	writer.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	writer.WriteHeader(buffer.statusCode())
+	_, _ = writer.Write(body)
+}
+
+type encryptedResponse struct {
+	XMLName   xml.Name `xml:"xml"`
+	Encrypt   cdata    `xml:"Encrypt"`
+	Signature cdata    `xml:"MsgSignature"`
+	Timestamp string   `xml:"TimeStamp"`
+	Nonce     cdata    `xml:"Nonce"`
+}
+
+type cdata struct {
+	Value string `xml:",cdata"`
+}
+
+type responseBuffer struct {
+	header http.Header
+	status int
+	body   bytes.Buffer
+}
+
+func newResponseBuffer() *responseBuffer {
+	return &responseBuffer{header: make(http.Header)}
+}
+
+func (r *responseBuffer) Header() http.Header {
+	return r.header
+}
+
+func (r *responseBuffer) WriteHeader(status int) {
+	if r.status == 0 {
+		r.status = status
+	}
+}
+
+func (r *responseBuffer) Write(body []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+	return r.body.Write(body)
+}
+
+func (r *responseBuffer) statusCode() int {
+	if r.status == 0 {
+		return http.StatusOK
+	}
+	return r.status
+}
+
+func (r *responseBuffer) writeTo(writer http.ResponseWriter) {
+	copyHeader(writer.Header(), r.header)
+	writer.WriteHeader(r.statusCode())
+	if r.body.Len() > 0 {
+		_, _ = writer.Write(r.body.Bytes())
+	}
+}
+
+func copyHeader(destination, source http.Header) {
+	for key, values := range source {
+		for _, value := range values {
+			destination.Add(key, value)
+		}
+	}
 }
 
 func encryptedValue(body []byte) ([]byte, string, error) {
