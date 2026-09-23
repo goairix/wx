@@ -249,6 +249,171 @@ func TestManagersSharingMapCacheAndKeyShareRefresh(t *testing.T) {
 	}
 }
 
+func TestManagersSharingComparableValueCacheShareRefresh(t *testing.T) {
+	sharedStorage := &identityStorage{}
+	firstCache := comparableValueCache{storage: sharedStorage}
+	secondCache := comparableValueCache{storage: sharedStorage}
+	release := make(chan struct{})
+	var calls int32
+	provider := ProviderFunc(func(context.Context) (Credential, error) {
+		atomic.AddInt32(&calls, 1)
+		<-release
+		return Credential{
+			AccessToken: "shared-value-token",
+			ExpiresAt:   time.Now().Add(time.Hour),
+		}, nil
+	})
+	first := NewManager("work", "value-corp", firstCache, provider)
+	second := NewManager("work", "value-corp", secondCache, provider)
+	results := make(chan Credential, 2)
+	for _, manager := range []*Manager{first, second} {
+		manager := manager
+		go func() {
+			credential, _ := manager.Token(context.Background())
+			results <- credential
+		}()
+	}
+	waitForParticipants(t, firstCache, first.cacheKey, first.coordinator, 2)
+	close(release)
+	for i := 0; i < 2; i++ {
+		credential := <-results
+		if credential.AccessToken != "shared-value-token" {
+			t.Fatalf("credential = %#v", credential)
+		}
+	}
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Fatalf("provider called %d times, want 1", got)
+	}
+}
+
+func TestRefreshCallRegistryCleanup(t *testing.T) {
+	assertNoRefreshCalls(t)
+
+	t.Run("success", func(t *testing.T) {
+		var calls int32
+		credentialCache := cache.NewMemory()
+		manager := NewManager(
+			"work",
+			"cleanup-success",
+			credentialCache,
+			ProviderFunc(func(context.Context) (Credential, error) {
+				atomic.AddInt32(&calls, 1)
+				return Credential{
+					AccessToken: "token",
+					ExpiresAt:   time.Now().Add(time.Hour),
+				}, nil
+			}),
+		)
+		if _, err := manager.Token(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		assertNoRefreshCalls(t)
+		if err := credentialCache.Delete(context.Background(), manager.cacheKey); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := manager.Token(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if got := atomic.LoadInt32(&calls); got != 2 {
+			t.Fatalf("provider called %d times, want 2", got)
+		}
+		assertNoRefreshCalls(t)
+	})
+
+	t.Run("provider error", func(t *testing.T) {
+		providerError := stderrors.New("refresh failed")
+		var calls int32
+		manager := NewManager(
+			"work",
+			"cleanup-error",
+			cache.NewMemory(),
+			ProviderFunc(func(context.Context) (Credential, error) {
+				atomic.AddInt32(&calls, 1)
+				return Credential{}, providerError
+			}),
+		)
+		for i := 0; i < 2; i++ {
+			if _, err := manager.Token(context.Background()); err != providerError {
+				t.Fatalf("Token() error = %v", err)
+			}
+			assertNoRefreshCalls(t)
+		}
+		if got := atomic.LoadInt32(&calls); got != 2 {
+			t.Fatalf("provider called %d times, want 2", got)
+		}
+	})
+
+	t.Run("waiter cancellation", func(t *testing.T) {
+		release := make(chan struct{})
+		started := make(chan struct{})
+		var calls int32
+		credentialCache := cache.NewMemory()
+		manager := NewManager(
+			"work",
+			"cleanup-cancel",
+			credentialCache,
+			ProviderFunc(func(context.Context) (Credential, error) {
+				if atomic.AddInt32(&calls, 1) == 1 {
+					close(started)
+					<-release
+				}
+				return Credential{
+					AccessToken: "token",
+					ExpiresAt:   time.Now().Add(time.Hour),
+				}, nil
+			}),
+		)
+		leaderDone := make(chan error, 1)
+		go func() {
+			_, err := manager.Token(context.Background())
+			leaderDone <- err
+		}()
+		<-started
+		waiterContext, cancel := context.WithCancel(context.Background())
+		waiterDone := make(chan error, 1)
+		go func() {
+			_, err := manager.Token(waiterContext)
+			waiterDone <- err
+		}()
+		waitForParticipants(
+			t,
+			credentialCache,
+			manager.cacheKey,
+			manager.coordinator,
+			2,
+		)
+		cancel()
+		if err := <-waiterDone; err != context.Canceled {
+			t.Fatalf("waiter error = %v", err)
+		}
+		close(release)
+		if err := <-leaderDone; err != nil {
+			t.Fatal(err)
+		}
+		assertNoRefreshCalls(t)
+		if err := credentialCache.Delete(context.Background(), manager.cacheKey); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := manager.Token(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if got := atomic.LoadInt32(&calls); got != 2 {
+			t.Fatalf("provider called %d times, want 2", got)
+		}
+		assertNoRefreshCalls(t)
+	})
+}
+
+func assertNoRefreshCalls(t *testing.T) {
+	t.Helper()
+	refreshCalls.Lock()
+	count := len(refreshCalls.entries)
+	refreshCalls.Unlock()
+	if count != 0 {
+		t.Fatalf("refresh call registry contains %d entries", count)
+	}
+}
+
 func assertIndependentRefreshes(t *testing.T, firstCache, secondCache cache.Cache) {
 	t.Helper()
 	started := make(chan string, 2)
