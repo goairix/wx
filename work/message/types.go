@@ -1,7 +1,5 @@
 package message
 
-import kernelError "github.com/goairix/wx/v2/kernel/error"
-
 // Messenger 消息接口
 type Messenger interface {
 	MsgType() string
@@ -323,7 +321,6 @@ type SendResult struct {
 
 // sendResponse 发送应用消息响应
 type sendResponse struct {
-	kernelError.ApiError
 	SendResult
 }
 
@@ -351,7 +348,6 @@ type UpdateTemplateCardResult struct {
 
 // updateTemplateCardResponse 更新模版卡片消息响应
 type updateTemplateCardResponse struct {
-	kernelError.ApiError
 	UpdateTemplateCardResult
 }
 
@@ -362,7 +358,6 @@ type RecallRequest struct {
 
 // recallResponse 撤回应用消息响应
 type recallResponse struct {
-	kernelError.ApiError
 }
 
 // ========== 群聊会话相关类型 ==========
@@ -377,7 +372,6 @@ type CreateChatRequest struct {
 
 // createChatResponse 创建群聊会话响应
 type createChatResponse struct {
-	kernelError.ApiError
 	ChatId string `json:"chatid"`
 }
 
@@ -400,6 +394,5 @@ type ChatInfo struct {
 
 // getChatResponse 获取群聊会话响应
 type getChatResponse struct {
-	kernelError.ApiError
 	ChatInfo ChatInfo `json:"chat_info"`
 }

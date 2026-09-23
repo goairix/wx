@@ -1,7 +1,5 @@
 package kf
 
-import kernelError "github.com/goairix/wx/v2/kernel/error"
-
 // UpdateAccountRequest 修改客服账号请求
 type UpdateAccountRequest struct {
 	OpenKfid string `json:"open_kfid"`
@@ -116,43 +114,36 @@ type MsgEventContent struct {
 
 // addAccountResponse 添加客服账号响应
 type addAccountResponse struct {
-	kernelError.ApiError
 	OpenKfid string `json:"open_kfid"`
 }
 
 // accountListResponse 获取客服账号列表响应
 type accountListResponse struct {
-	kernelError.ApiError
 	AccountListResult
 }
 
 // addContactWayResponse 获取客服账号链接响应
 type addContactWayResponse struct {
-	kernelError.ApiError
 	URL string `json:"url"`
 }
 
 // servicerAddDelResponse 添加/删除接待人员响应
 type servicerAddDelResponse struct {
-	kernelError.ApiError
 	ResultList []ServicerResult `json:"result_list"`
 }
 
 // servicerListResponse 获取接待人员列表响应
 type servicerListResponse struct {
-	kernelError.ApiError
 	ServicerList []ServicerInfo `json:"servicer_list"`
 }
 
 // serviceStateGetResponse 获取会话状态响应
 type serviceStateGetResponse struct {
-	kernelError.ApiError
 	ServiceStateInfo
 }
 
 // serviceStateTransResponse 变更会话状态响应
 type serviceStateTransResponse struct {
-	kernelError.ApiError
 	MsgCode string `json:"msg_code"`
 }
 
@@ -170,12 +161,10 @@ type sendMsgRequest struct {
 
 // sendMsgResponse 发送消息响应
 type sendMsgResponse struct {
-	kernelError.ApiError
 	MsgId string `json:"msgid"`
 }
 
 // syncMsgResponse 读取消息响应
 type syncMsgResponse struct {
-	kernelError.ApiError
 	SyncMsgResult
 }

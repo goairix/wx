@@ -1,7 +1,5 @@
 package media
 
-import kernelError "github.com/goairix/wx/v2/kernel/error"
-
 // UploadResult 上传临时素材结果
 type UploadResult struct {
 	Type      string `json:"type"`
@@ -11,7 +9,6 @@ type UploadResult struct {
 
 // uploadResponse 上传临时素材响应
 type uploadResponse struct {
-	kernelError.ApiError
 	UploadResult
 }
 
@@ -22,7 +19,6 @@ type UploadImageResult struct {
 
 // uploadImageResponse 上传图片响应
 type uploadImageResponse struct {
-	kernelError.ApiError
 	UploadImageResult
 }
 
@@ -42,6 +38,5 @@ type AsyncUploadResult struct {
 
 // asyncUploadResponse 异步上传临时素材响应
 type asyncUploadResponse struct {
-	kernelError.ApiError
 	AsyncUploadResult
 }

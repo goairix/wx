@@ -1,7 +1,5 @@
 package auth
 
-import kernelError "github.com/goairix/wx/v2/kernel/error"
-
 // UserIdentity 用户身份信息
 type UserIdentity struct {
 	UserId     string `json:"UserId"`
@@ -25,13 +23,11 @@ type UserDetail struct {
 
 // userIdentityResult 用户身份信息响应
 type userIdentityResult struct {
-	kernelError.ApiError
 	UserIdentity
 }
 
 // userDetailResult 用户敏感信息响应
 type userDetailResult struct {
-	kernelError.ApiError
 	UserDetail
 }
 
@@ -45,6 +41,5 @@ type TfaInfo struct {
 
 // tfaInfoResult 获取成员二次验证信息响应
 type tfaInfoResult struct {
-	kernelError.ApiError
 	TfaInfo
 }

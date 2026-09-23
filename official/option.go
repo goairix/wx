@@ -7,115 +7,76 @@ import (
 	corecache "github.com/goairix/wx/v2/core/cache"
 	"github.com/goairix/wx/v2/core/observability"
 	"github.com/goairix/wx/v2/core/transport"
-	"github.com/goairix/wx/v2/kernel/contracts"
-	legacycache "github.com/goairix/wx/v2/support/cache"
-	"github.com/goairix/wx/v2/support/lock"
 )
 
-// config stores legacy constructor settings.
-type config struct {
-	isOpenPlatform         bool
-	appId                  string
-	appSecret              string
-	token                  string
-	aesKey                 string
-	authorizerRefreshToken string
-	authorizerAccount      contracts.AuthorizerInterface
-}
-
-// option contains options shared by the legacy and v2 constructors.
 type option struct {
-	cache               legacycache.Cache
-	coreCache           corecache.Cache
-	cacheKeyPrefix      string
-	locker              lock.Locker
-	accessTokenProvider contracts.AccessTokenProvider
-	baseURL             string
-	httpClient          *http.Client
-	retry               transport.RetryPolicy
-	hook                observability.Hook
-	transport           *transport.Client
-	credentialProvider  auth.Provider
-	credentialIdentity  string
-	credentialManager   *auth.Manager
+	coreCache          corecache.Cache
+	baseURL            string
+	httpClient         *http.Client
+	retry              transport.RetryPolicy
+	hook               observability.Hook
+	transport          *transport.Client
+	credentialProvider auth.Provider
+	credentialIdentity string
+	credentialManager  *auth.Manager
 }
 
+// Option configures an official account client.
 type Option func(*option)
 
-// WithCache accepts either the v2 core cache or the legacy cache interface.
-func WithCache(value interface{}) Option {
-	return func(o *option) {
-		switch cache := value.(type) {
-		case corecache.Cache:
-			o.coreCache = cache
-		case legacycache.Cache:
-			o.cache = cache
-		}
-	}
-}
-
-func WithCacheKeyPrefix(cacheKeyPrefix string) Option {
-	return func(o *option) {
-		o.cacheKeyPrefix = cacheKeyPrefix
-	}
-}
-
-func WithLocker(locker lock.Locker) Option {
-	return func(o *option) {
-		o.locker = locker
-	}
-}
-
-func WithAccessTokenProvider(provider contracts.AccessTokenProvider) Option {
-	return func(o *option) {
-		o.accessTokenProvider = provider
+// WithCache configures the shared credential cache.
+func WithCache(value corecache.Cache) Option {
+	return func(settings *option) {
+		settings.coreCache = value
 	}
 }
 
 // WithBaseURL overrides the API endpoint, primarily for tests and proxies.
 func WithBaseURL(baseURL string) Option {
-	return func(o *option) {
-		o.baseURL = baseURL
+	return func(settings *option) {
+		settings.baseURL = baseURL
 	}
 }
 
-// WithHTTPClient injects the HTTP client used by the v2 transport.
+// WithHTTPClient injects the HTTP client used by the shared transport.
 func WithHTTPClient(client *http.Client) Option {
-	return func(o *option) {
-		o.httpClient = client
+	return func(settings *option) {
+		settings.httpClient = client
 	}
 }
 
-// WithRetryPolicy configures v2 transport retries.
+// WithRetryPolicy configures transport retries.
 func WithRetryPolicy(policy transport.RetryPolicy) Option {
-	return func(o *option) { o.retry = policy }
+	return func(settings *option) {
+		settings.retry = policy
+	}
 }
 
-// WithHook attaches v2 request observability hooks.
+// WithHook attaches request observability hooks.
 func WithHook(hook observability.Hook) Option {
-	return func(o *option) {
-		o.hook = hook
+	return func(settings *option) {
+		settings.hook = hook
 	}
 }
 
 // WithTransport reuses an existing core transport.
 func WithTransport(client *transport.Client) Option {
-	return func(o *option) {
-		o.transport = client
+	return func(settings *option) {
+		settings.transport = client
 	}
 }
 
 // WithCredentialProvider configures externally managed server credentials.
 func WithCredentialProvider(identity string, provider auth.Provider) Option {
-	return func(o *option) {
-		o.credentialIdentity = identity
-		o.credentialProvider = provider
+	return func(settings *option) {
+		settings.credentialIdentity = identity
+		settings.credentialProvider = provider
 	}
 }
 
 // WithCredentialManager reuses an existing credential manager.
 func WithCredentialManager(manager *auth.Manager) Option {
-	return func(o *option) {
-		o.credentialManager = manager
+	return func(settings *option) {
+		settings.credentialManager = manager
 	}
 }

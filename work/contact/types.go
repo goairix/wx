@@ -1,7 +1,5 @@
 package contact
 
-import kernelError "github.com/goairix/wx/v2/kernel/error"
-
 // Attr 扩展属性
 type Attr struct {
 	Type int    `json:"type"`
@@ -134,49 +132,41 @@ type InviteResult struct {
 
 // userInfoResult 获取成员信息响应
 type userInfoResult struct {
-	kernelError.ApiError
 	UserInfo
 }
 
 // userIdListResult 获取成员ID列表响应
 type userIdListResult struct {
-	kernelError.ApiError
 	UserIdList
 }
 
 // simpleUserListResult 获取部门成员响应
 type simpleUserListResult struct {
-	kernelError.ApiError
 	UserList []SimpleUser `json:"userlist"`
 }
 
 // userDetailListResult 获取部门成员详情响应
 type userDetailListResult struct {
-	kernelError.ApiError
 	UserList []UserInfo `json:"userlist"`
 }
 
 // convertToOpenidResult userid转openid响应
 type convertToOpenidResult struct {
-	kernelError.ApiError
 	Openid string `json:"openid"`
 }
 
 // convertToUseridResult openid转userid响应
 type convertToUseridResult struct {
-	kernelError.ApiError
 	Userid string `json:"userid"`
 }
 
 // inviteResult 邀请成员响应
 type inviteResult struct {
-	kernelError.ApiError
 	InviteResult
 }
 
 // getUseridResult 手机号/邮箱获取userid响应
 type getUseridResult struct {
-	kernelError.ApiError
 	Userid string `json:"userid"`
 }
 
@@ -219,25 +209,21 @@ type DepartmentIdInfo struct {
 
 // createDepartmentResult 创建部门响应
 type createDepartmentResult struct {
-	kernelError.ApiError
 	Id int `json:"id"`
 }
 
 // departmentListResult 获取部门列表响应
 type departmentListResult struct {
-	kernelError.ApiError
 	Department []DepartmentInfo `json:"department"`
 }
 
 // departmentIdListResult 获取子部门ID列表响应
 type departmentIdListResult struct {
-	kernelError.ApiError
 	DepartmentId []DepartmentIdInfo `json:"department_id"`
 }
 
 // departmentGetResult 获取单个部门详情响应
 type departmentGetResult struct {
-	kernelError.ApiError
 	Department DepartmentInfo `json:"department"`
 }
 
@@ -270,25 +256,21 @@ type TagMemberResult struct {
 
 // createTagResult 创建标签响应
 type createTagResult struct {
-	kernelError.ApiError
 	TagId int `json:"tagid"`
 }
 
 // tagDetailResult 获取标签成员响应
 type tagDetailResult struct {
-	kernelError.ApiError
 	TagDetail
 }
 
 // tagMemberOpResult 标签成员操作响应
 type tagMemberOpResult struct {
-	kernelError.ApiError
 	TagMemberResult
 }
 
 // tagListResult 获取标签列表响应
 type tagListResult struct {
-	kernelError.ApiError
 	TagList []TagInfo `json:"taglist"`
 }
 
@@ -321,13 +303,11 @@ type BatchResult struct {
 
 // batchJobResult 批量任务响应
 type batchJobResult struct {
-	kernelError.ApiError
 	JobId string `json:"jobid"`
 }
 
 // batchResultResponse 获取异步任务结果响应
 type batchResultResponse struct {
-	kernelError.ApiError
 	BatchResult
 }
 
@@ -348,12 +328,10 @@ type ExportResult struct {
 
 // exportJobResult 导出任务响应
 type exportJobResult struct {
-	kernelError.ApiError
 	JobId string `json:"jobid"`
 }
 
 // exportResultResponse 获取导出结果响应
 type exportResultResponse struct {
-	kernelError.ApiError
 	ExportResult
 }

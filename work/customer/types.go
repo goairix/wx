@@ -1,7 +1,5 @@
 package customer
 
-import kernelError "github.com/goairix/wx/v2/kernel/error"
-
 // ExternalContactInfo 外部联系人信息
 type ExternalContactInfo struct {
 	ExternalUserid  string           `json:"external_userid"`
@@ -384,102 +382,85 @@ type GroupChatDetail struct {
 
 // followUserListResult 获取配置了客户联系功能的成员列表响应
 type followUserListResult struct {
-	kernelError.ApiError
 	FollowUser []string `json:"follow_user"`
 }
 
 // externalUseridListResult 获取客户列表响应
 type externalUseridListResult struct {
-	kernelError.ApiError
 	ExternalUserid []string `json:"external_userid"`
 }
 
 // externalContactDetailResult 获取客户详情响应
 type externalContactDetailResult struct {
-	kernelError.ApiError
 	ExternalContactDetail
 }
 
 // corpTagListResult 获取企业标签库响应
 type corpTagListResult struct {
-	kernelError.ApiError
 	TagGroup []TagGroup `json:"tag_group"`
 }
 
 // addCorpTagResult 添加企业客户标签响应
 type addCorpTagResult struct {
-	kernelError.ApiError
 	TagGroup TagGroup `json:"tag_group"`
 }
 
 // batchGetByUserResult 批量获取客户详情响应
 type batchGetByUserResult struct {
-	kernelError.ApiError
 	BatchGetByUserResult
 }
 
 // unionidToExternalUseridResult unionid转换响应
 type unionidToExternalUseridResult struct {
-	kernelError.ApiError
 	ExternalUseridInfo []ExternalUseridInfo `json:"external_userid_info"`
 }
 
 // toServiceExternalUseridResult 代开发应用external_userid转换响应
 type toServiceExternalUseridResult struct {
-	kernelError.ApiError
 	ExternalUserid string `json:"external_userid"`
 }
 
 // strategyListResponse 获取规则组列表响应
 type strategyListResponse struct {
-	kernelError.ApiError
 	StrategyListResult
 }
 
 // strategyGetResponse 获取规则组详情响应
 type strategyGetResponse struct {
-	kernelError.ApiError
 	Strategy StrategyInfo `json:"strategy"`
 }
 
 // strategyGetRangeResponse 获取规则组管理范围响应
 type strategyGetRangeResponse struct {
-	kernelError.ApiError
 	StrategyGetRangeResult
 }
 
 // strategyCreateResponse 创建规则组响应
 type strategyCreateResponse struct {
-	kernelError.ApiError
 	StrategyId int `json:"strategy_id"`
 }
 
 // groupChatListResponse 获取客户群列表响应
 type groupChatListResponse struct {
-	kernelError.ApiError
 	GroupChatListResult
 }
 
 // groupChatGetResponse 获取客户群详情响应
 type groupChatGetResponse struct {
-	kernelError.ApiError
 	GroupChat GroupChatDetail `json:"group_chat"`
 }
 
 // opengidToChatIdResponse 客户群opengid转换响应
 type opengidToChatIdResponse struct {
-	kernelError.ApiError
 	ChatId string `json:"chat_id"`
 }
 
 // groupChatAddJoinWayResponse 配置客户群进群方式响应
 type groupChatAddJoinWayResponse struct {
-	kernelError.ApiError
 	ConfigId string `json:"config_id"`
 }
 
 // groupChatGetJoinWayResponse 获取客户群进群方式配置响应
 type groupChatGetJoinWayResponse struct {
-	kernelError.ApiError
 	JoinWay GroupChatJoinWay `json:"join_way"`
 }
