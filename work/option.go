@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	corecache "github.com/goairix/wx/v2/core/cache"
+	"github.com/goairix/wx/v2/core/logging"
 	"github.com/goairix/wx/v2/core/observability"
 	"github.com/goairix/wx/v2/core/transport"
 )
@@ -14,6 +15,7 @@ type option struct {
 	httpClient *http.Client
 	retry      transport.RetryPolicy
 	hook       observability.Hook
+	logger     logging.Logger
 }
 
 // Option configures an enterprise WeChat client.
@@ -56,5 +58,12 @@ func WithRetryPolicy(value transport.RetryPolicy) Option {
 func WithHook(value observability.Hook) Option {
 	return func(settings *option) {
 		settings.hook = value
+	}
+}
+
+// WithLogger configures structured request logging.
+func WithLogger(logger logging.Logger) Option {
+	return func(settings *option) {
+		settings.logger = logger
 	}
 }

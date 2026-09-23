@@ -5,6 +5,7 @@ import (
 
 	"github.com/goairix/wx/v2/core/auth"
 	corecache "github.com/goairix/wx/v2/core/cache"
+	"github.com/goairix/wx/v2/core/logging"
 	"github.com/goairix/wx/v2/core/observability"
 	"github.com/goairix/wx/v2/core/transport"
 )
@@ -15,6 +16,7 @@ type option struct {
 	httpClient         *http.Client
 	retry              transport.RetryPolicy
 	hook               observability.Hook
+	logger             logging.Logger
 	transport          *transport.Client
 	credentialProvider auth.Provider
 	credentialIdentity string
@@ -56,6 +58,13 @@ func WithRetryPolicy(policy transport.RetryPolicy) Option {
 func WithHook(hook observability.Hook) Option {
 	return func(settings *option) {
 		settings.hook = hook
+	}
+}
+
+// WithLogger configures structured request logging.
+func WithLogger(logger logging.Logger) Option {
+	return func(settings *option) {
+		settings.logger = logger
 	}
 }
 

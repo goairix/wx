@@ -64,6 +64,7 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 			baseURL,
 			optsState.retry,
 			transport.WithHook(optsState.hook),
+			transport.WithLogger(optsState.logger),
 		)
 	}
 	credentialCache := optsState.coreCache

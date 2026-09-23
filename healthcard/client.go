@@ -76,6 +76,7 @@ func NewClient(config Config, options ...Option) (*Client, error) {
 			baseURL,
 			settings.retry,
 			transport.WithHook(settings.hook),
+			transport.WithLogger(settings.logger),
 		)
 	}
 

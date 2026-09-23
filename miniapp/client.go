@@ -63,6 +63,7 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 			base,
 			state.retry,
 			transport.WithHook(state.hook),
+			transport.WithLogger(state.logger),
 		)
 	}
 	c := &Client{config: config, transport: tr}
