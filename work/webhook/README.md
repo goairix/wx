@@ -10,3 +10,7 @@ handler := client.Webhook().Handler(webhook.HandlerFunc(func(
     return corewebhook.EmptyResponse(), nil
 }))
 ```
+
+`Event` 提供 `ContactChange`、`ExternalContactChange`、`GroupChatChange`、
+`ExternalTagChange`、`TemplateCard`、`LivingStatusChange` 和 `Approval` 等 typed 入口。
+安全模式请求返回非空 body 时，适配器会自动加密响应。

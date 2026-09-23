@@ -85,6 +85,83 @@ func TestPackageArchitecture(t *testing.T) {
 	}
 }
 
+func TestCrossesDomainBoundary(t *testing.T) {
+	tests := []struct {
+		name     string
+		current  string
+		imported string
+		want     bool
+	}{
+		{
+			name:     "same platform sibling domain",
+			current:  modulePath + "/official/menu",
+			imported: modulePath + "/official/user",
+			want:     true,
+		},
+		{
+			name:     "cross platform domain",
+			current:  modulePath + "/official/menu",
+			imported: modulePath + "/miniapp/user",
+			want:     true,
+		},
+		{
+			name:     "domain importing platform root",
+			current:  modulePath + "/official/menu",
+			imported: modulePath + "/official",
+			want:     true,
+		},
+		{
+			name:     "same domain child",
+			current:  modulePath + "/official/menu/internal",
+			imported: modulePath + "/official/menu/model",
+			want:     false,
+		},
+		{
+			name:     "shared platform internal",
+			current:  modulePath + "/official/menu",
+			imported: modulePath + "/official/internal/api",
+			want:     false,
+		},
+		{
+			name:     "openplatform composes official",
+			current:  modulePath + "/openplatform",
+			imported: modulePath + "/official",
+			want:     false,
+		},
+		{
+			name:     "openplatform composes miniapp",
+			current:  modulePath + "/openplatform",
+			imported: modulePath + "/miniapp",
+			want:     false,
+		},
+		{
+			name:     "openplatform composes work authorizer",
+			current:  modulePath + "/openplatform",
+			imported: modulePath + "/work/authorizer",
+			want:     false,
+		},
+		{
+			name:     "other platform root cannot compose cross platform",
+			current:  modulePath + "/official",
+			imported: modulePath + "/miniapp",
+			want:     true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := crossesDomainBoundary(test.current, test.imported)
+			if got != test.want {
+				t.Fatalf("crossesDomainBoundary(%q, %q) = %v, want %v",
+					test.current,
+					test.imported,
+					got,
+					test.want,
+				)
+			}
+		})
+	}
+}
+
 func repositoryRoot(t *testing.T) string {
 	t.Helper()
 	_, filename, _, ok := runtime.Caller(0)
@@ -140,20 +217,56 @@ func platformRoot(importPath string) string {
 }
 
 func crossesDomainBoundary(packagePath, importedPath string) bool {
-	platform := platformRoot(packagePath)
-	if platform == "" || platformRoot(importedPath) != platform {
+	platform, domain := platformDomain(packagePath)
+	importedPlatform, importedDomain := platformDomain(importedPath)
+	if platform == "" || importedPlatform == "" {
 		return false
 	}
+	if domain == "" {
+		if platform == importedPlatform {
+			return false
+		}
+		return !allowedPlatformComposition(packagePath, importedPath)
+	}
+	if sharedPlatformPackage(domain) {
+		return false
+	}
+	if importedPlatform != platform {
+		return true
+	}
+	if importedDomain == "" {
+		return true
+	}
+	if domain == importedDomain || sharedPlatformPackage(importedDomain) {
+		return false
+	}
+	return true
+}
 
-	packageParts := strings.Split(strings.TrimPrefix(packagePath, modulePath+"/"), "/")
-	importParts := strings.Split(strings.TrimPrefix(importedPath, modulePath+"/"), "/")
-	if len(packageParts) < 2 || len(importParts) < 2 {
+func platformDomain(importPath string) (string, string) {
+	platform := platformRoot(importPath)
+	if platform == "" {
+		return "", ""
+	}
+	parts := strings.Split(strings.TrimPrefix(importPath, modulePath+"/"), "/")
+	if len(parts) < 2 {
+		return platform, ""
+	}
+	return platform, parts[1]
+}
+
+func allowedPlatformComposition(packagePath, importedPath string) bool {
+	if packagePath != modulePath+"/openplatform" {
 		return false
 	}
-	if packageParts[1] == importParts[1] {
+	switch importedPath {
+	case modulePath + "/official",
+		modulePath + "/miniapp",
+		modulePath + "/work/authorizer":
+		return true
+	default:
 		return false
 	}
-	return !sharedPlatformPackage(importParts[1])
 }
 
 func sharedPlatformPackage(name string) bool {

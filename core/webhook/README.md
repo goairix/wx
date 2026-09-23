@@ -14,3 +14,5 @@ handler := webhook.NewCallbackHandler(
 ```
 
 空 token 或非法 AES key 会在事件分发前拒绝请求。使用 `WithErrorResponse` 可设置平台需要的失败响应。
+启用 AES 时必须提供 receiver ID。加密请求对应的业务响应只要包含 body，就会自动封装为带
+`Encrypt`、`MsgSignature`、`TimeStamp` 和 `Nonce` 的微信加密 XML。请求 body 上限为 1 MiB。
