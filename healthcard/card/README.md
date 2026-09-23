@@ -4,11 +4,32 @@
 
 ```go
 cards := client.Card()
-result, err := cards.Register(card.RegisterRequest{WechatCode: wechatCode, Name: "张三", Gender: "男", Nation: "汉族", Birthday: "1998-09-08", IDNumber: idNumber, IDType: "01", Phone1: phone})
+result, err := cards.Register(ctx, card.RegisterRequest{
+	WechatCode: wechatCode,
+	Name:       "张三",
+	Gender:     "男",
+	Nation:     "汉族",
+	Birthday:   "1998-09-08",
+	IDNumber:   idNumber,
+	IDType:     "01",
+	Phone1:     phone,
+})
 
 // 100、161 接口要求 commonIn 同时携带 relateAppId 和当前用户 relateOpenId。
-cardInfo, err := cards.GetByHealthCode(card.GetByHealthCodeRequest{HealthCode: healthCode}, session.Openid)
-qr, err := cards.GetDynamicQRCode(card.GetDynamicQRCodeRequest{HealthCardID: healthCardID, IDType: "01", IDNumber: idNumber}, session.Openid)
+cardInfo, err := cards.GetByHealthCode(
+	ctx,
+	card.GetByHealthCodeRequest{HealthCode: healthCode},
+	session.OpenID,
+)
+qr, err := cards.GetDynamicQRCode(
+	ctx,
+	card.GetDynamicQRCodeRequest{
+		HealthCardID: healthCardID,
+		IDType:       "01",
+		IDNumber:     idNumber,
+	},
+	session.OpenID,
+)
 ```
 
 批量注册一次最多 15 人；查询和二维码接口由后端调用，前端只接收业务允许返回的结果。

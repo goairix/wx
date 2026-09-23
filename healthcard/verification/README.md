@@ -3,7 +3,20 @@
 调用入口：`client.Verification()`。对应服务 103、144、169、170、303、304。
 
 ```go
-order, err := client.Verification().CreateUniformVerifyOrder(verification.CreateUniformVerifyOrderRequest{CardType: "01", IDCard: idCard, Name: name, WechatCode: wechatCode, Scene: "0101081", UseCardType: "11", VerifySuccessRedirectURL: "mini:/pages/result?registerOrderId=${registerOrderId}", VerifyFailRedirectURL: "mini:/pages/fail"}, session.Openid)
+order, err := client.Verification().CreateUniformVerifyOrder(
+	ctx,
+	verification.CreateUniformVerifyOrderRequest{
+		CardType:                 "01",
+		IDCard:                   idCard,
+		Name:                     name,
+		WechatCode:               wechatCode,
+		Scene:                    "0101081",
+		UseCardType:              "11",
+		VerifySuccessRedirectURL: "mini:/pages/result?registerOrderId=${registerOrderId}",
+		VerifyFailRedirectURL:    "mini:/pages/fail",
+	},
+	session.OpenID,
+)
 ```
 
 `RegisterFaceOrder` 获取人脸订单，`VerifyFaceIdentity` 校验人脸结果；`CreateUniformVerifyOrder`/`CheckUniformVerifyResult` 用于统一认证；`GetRealPersonUserInfo` 和 `NotifyRealPersonVerifyResult` 支持业务自有人脸页。微信人脸 SDK 本身不在本包内，前端认证完成后由业务后端调用结果接口。

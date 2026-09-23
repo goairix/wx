@@ -4,9 +4,22 @@
 
 ```go
 patients := client.Patient()
-support, err := patients.GetCitySupport(patient.GetCitySupportRequest{CityCode: "440300", PlatformID: platformID})
-form, err := patients.GetPatientCardForm(patient.GetPatientCardFormRequest{PatientCode: patientCode})
-info, err := patients.GetRegistrationInfo(patient.GetRegistrationInfoRequest{Code: regInfoCode}, session.Openid)
+support, err := patients.GetCitySupport(
+	ctx,
+	patient.GetCitySupportRequest{
+		CityCode:   "440300",
+		PlatformID: platformID,
+	},
+)
+form, err := patients.GetPatientCardForm(
+	ctx,
+	patient.GetPatientCardFormRequest{PatientCode: patientCode},
+)
+info, err := patients.GetRegistrationInfo(
+	ctx,
+	patient.GetRegistrationInfoRequest{Code: regInfoCode},
+	session.OpenID,
+)
 ```
 
 `GetCitySupport`、`VerifyRealName` 用于区域和实名就诊人校验；`GetRegistrationInfo`、`GetPatientCardForm`、`SavePatientCard` 覆盖建档异常和老患者升级；`SaveScanQRCodeFields` 保存自定义展码字段；`CreateBindCardAuthorization`、`SubmitHealthCardRegistration` 覆盖建档授权链路。前端拿到 `wechatCode` 后交业务后端，SDK 不在浏览器中运行。

@@ -6,10 +6,24 @@
 
 ```go
 import (
-	"github.com/goairix/wx/health_card"
-	"github.com/goairix/wx/health_card/card"
+	"context"
+
+	"github.com/goairix/wx/v2/healthcard"
+	"github.com/goairix/wx/v2/healthcard/card"
 )
 
-client := health_card.New(appID, appSecret, hospitalID, relateAppID)
-result, err := client.Card().GetByHealthCode(card.GetByHealthCodeRequest{HealthCode: "health-code"}, relateOpenID)
+client, err := healthcard.NewClient(healthcard.Config{
+	AppID:        appID,
+	AppSecret:    appSecret,
+	HospitalID:   hospitalID,
+	RelatedAppID: relateAppID,
+})
+if err != nil {
+	return err
+}
+result, err := client.Card().GetByHealthCode(
+	context.Background(),
+	card.GetByHealthCodeRequest{HealthCode: "health-code"},
+	relateOpenID,
+)
 ```
