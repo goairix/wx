@@ -12,6 +12,7 @@ import (
 	"github.com/goairix/wx/v2/miniapp/encryptor"
 	"github.com/goairix/wx/v2/miniapp/internal/api"
 	"github.com/goairix/wx/v2/miniapp/message"
+	"github.com/goairix/wx/v2/miniapp/multiterminal"
 	"github.com/goairix/wx/v2/miniapp/qrcode"
 	"github.com/goairix/wx/v2/miniapp/security"
 	"github.com/goairix/wx/v2/miniapp/user"
@@ -29,6 +30,7 @@ type Client struct {
 	authorizer *authorizer.Client
 	users      *user.Client
 	messages   *message.Client
+	multi      *multiterminal.Client
 	qr         *qrcode.Client
 	codes      *wxacode.Client
 	security   *security.Client
@@ -81,6 +83,7 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 	c.authorizer = authorizer.NewClient(executor)
 	c.users = user.New(tr, c.token)
 	c.messages = message.New(tr, c.token)
+	c.multi = multiterminal.NewClient(config.AppID, config.AppSecret, tr)
 	c.qr = qrcode.New(tr, c.token)
 	c.codes = wxacode.New(tr, c.token)
 	c.security = security.New(tr, c.token)
@@ -120,6 +123,11 @@ func (c *Client) Message() *message.Client {
 
 func (c *Client) Messages() *message.Client {
 	return c.messages
+}
+
+// MultiTerminal returns multi-terminal identity verification operations.
+func (c *Client) MultiTerminal() *multiterminal.Client {
+	return c.multi
 }
 
 func (c *Client) QRCode() *qrcode.Client {
