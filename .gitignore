@@ -30,4 +30,3 @@ go.work.sum
 /.vscode
 .claude
 .DS_Store
-main.go

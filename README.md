@@ -203,6 +203,15 @@ http.Handle("/wechat/callback", handler)
 
 ## 开发
 
+首次克隆仓库后运行项目初始化脚本：
+
+```bash
+./scripts/setup-hooks.sh
+```
+
+初始化后，每次提交都会自动格式化已暂存的 Go 文件，并执行完整测试和 `go vet`。只修改文档时，
+Hook 仅检查暂存内容，不运行 Go 测试。
+
 提交代码前运行：
 
 ```bash
