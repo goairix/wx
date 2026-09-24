@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repository_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+	printf 'pre-commit: not inside a Git repository\n' >&2
+	exit 1
+}
+cd "$repository_root"
+
+fail() {
+	printf 'pre-commit: %s\n' "$1" >&2
+	exit 1
+}
+
+git diff --cached --check || fail 'staged content has whitespace errors'
+
+go_related=false
+go_files=()
+while IFS= read -r -d '' file; do
+	case "$file" in
+	*.go)
+		go_related=true
+		[[ -f "$file" ]] && go_files+=("$file")
+		;;
+	go.mod | go.sum)
+		go_related=true
+		;;
+	esac
+done < <(git diff --cached --name-only -z --diff-filter=ACMR)
+
+if [[ "$go_related" != true ]]; then
+	printf 'pre-commit: staged checks passed\n'
+	exit 0
+fi
+
+command -v go >/dev/null 2>&1 || fail 'go is not installed or not in PATH'
+
+if ((${#go_files[@]} > 0)); then
+	command -v gofmt >/dev/null 2>&1 || fail 'gofmt is not installed or not in PATH'
+	for file in "${go_files[@]}"; do
+		git diff --quiet -- "$file" || fail "$file has unstaged changes; run gofmt and stage it manually"
+	done
+	gofmt -w "${go_files[@]}" || fail 'gofmt failed'
+	git add -- "${go_files[@]}"
+fi
+
+git diff --cached --check || fail 'formatted staged content has whitespace errors'
+printf 'pre-commit: running go test ./...\n'
+go test ./... || fail 'go test ./... failed'
+printf 'pre-commit: running go vet ./...\n'
+go vet ./... || fail 'go vet ./... failed'
+printf 'pre-commit: all checks passed\n'
