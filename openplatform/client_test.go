@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -169,6 +170,12 @@ func TestOpenPlatformRequestContractsAndCredentialIsolation(t *testing.T) {
 				"openid":   "openid-1",
 				"nickname": "reader",
 			})
+		case "/sns/oauth2/component/access_token":
+			writeJSON(writer, map[string]interface{}{
+				"access_token": "oauth-token",
+				"expires_in":   7200,
+				"openid":       "oauth-openid",
+			})
 		case "/wxa/business/getuserphonenumber":
 			writeJSON(writer, map[string]interface{}{
 				"phone_info": map[string]interface{}{
@@ -247,6 +254,25 @@ func TestOpenPlatformRequestContractsAndCredentialIsolation(t *testing.T) {
 	)
 	if err != nil {
 		t.Fatal(err)
+	}
+	oauthURL := officialClient.OAuth().AuthorizationURL(
+		"https://service.example.com/callback",
+		"snsapi_userinfo",
+		"state",
+	)
+	parsedOAuthURL, parseErr := url.Parse(oauthURL)
+	if parseErr != nil {
+		t.Fatal(parseErr)
+	}
+	if got := parsedOAuthURL.Query().Get("component_appid"); got != "component-app" {
+		t.Fatalf("component_appid = %q", got)
+	}
+	oauthToken, oauthErr := officialClient.OAuth().TokenFromCode(ctx, "oauth-code")
+	if oauthErr != nil {
+		t.Fatal(oauthErr)
+	}
+	if oauthToken.AccessToken != "oauth-token" {
+		t.Fatalf("oauth token = %#v", oauthToken)
 	}
 	if _, userErr := officialClient.Users().Info(ctx, "openid-1"); userErr != nil {
 		t.Fatal(userErr)

@@ -39,6 +39,31 @@ info, err := client.Users().Info(ctx, "openid")
 
 通过开放平台代公众号调用时，由 `openplatform.Client.AuthorizedOfficial` 创建客户端。它会复用开放平台的 transport、cache 和授权方凭据管理器。
 
+## 网页授权
+
+授权地址由 SDK 生成，业务代码不需要拼接微信域名或查询参数：
+
+```go
+authorizationURL := client.OAuth().AuthorizationURL(
+    "https://service.example.com/oauth/callback",
+    oauth.ScopeUserInfo,
+    state,
+)
+http.Redirect(writer, request, authorizationURL, http.StatusFound)
+```
+
+`oauth.ScopeBase` 用于静默授权，`oauth.ScopeUserInfo` 用于获取用户资料。scope 为空时默认使用 `oauth.ScopeBase`。
+
+`state` 由业务方生成和校验，用于防止 OAuth CSRF。建议使用密码学安全随机数并编码为 hex 或 Base62；取值只使用 `a-zA-Z0-9`，最多 128 字节。签发时将它与当前浏览器会话绑定；回调时校验内容、有效期和一次性使用状态，校验通过后立即失效。
+
+回调取得 `code` 后可以一次完成 token 交换与用户资料获取：
+
+```go
+user, err := client.OAuth().UserFromCode(ctx, code)
+```
+
+通过 `openplatform.Client.AuthorizedOfficial` 创建的公众号客户端也使用同一组方法。SDK 会自动添加 `component_appid`，并通过 component access token 调用对应的 code 换 token 接口。
+
 ## 错误处理
 
 平台错误统一返回 `*core/errors.Error`：

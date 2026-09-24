@@ -89,7 +89,12 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 	client.authorizer = authorizer.NewClient(executor)
 	client.menu = menu.NewClient(executor)
 	client.messages = message.NewClient(executor)
-	client.oauth = oauth.NewClient(tr, config.AppID, config.AppSecret)
+	client.oauth = oauth.NewClient(
+		tr,
+		config.AppID,
+		config.AppSecret,
+		optsState.oauthOptions...,
+	)
 	client.qrCode = qrcode.NewClient(executor)
 	client.jsSDK = jssdk.NewClient(executor, config.AppID, credentialCache)
 	client.users = user.NewClient(tr, client.auth)

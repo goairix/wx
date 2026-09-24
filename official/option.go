@@ -8,6 +8,7 @@ import (
 	"github.com/goairix/wx/v2/core/logging"
 	"github.com/goairix/wx/v2/core/observability"
 	"github.com/goairix/wx/v2/core/transport"
+	"github.com/goairix/wx/v2/official/oauth"
 )
 
 type option struct {
@@ -21,6 +22,7 @@ type option struct {
 	credentialProvider auth.Provider
 	credentialIdentity string
 	credentialManager  *auth.Manager
+	oauthOptions       []oauth.Option
 }
 
 // Option configures an official account client.
@@ -87,5 +89,16 @@ func WithCredentialProvider(identity string, provider auth.Provider) Option {
 func WithCredentialManager(manager *auth.Manager) Option {
 	return func(settings *option) {
 		settings.credentialManager = manager
+	}
+}
+
+// WithOAuthComponent configures webpage OAuth for an account authorized by a
+// WeChat Open Platform component.
+func WithOAuthComponent(componentAppID string, credential auth.Provider) Option {
+	return func(settings *option) {
+		settings.oauthOptions = append(
+			settings.oauthOptions,
+			oauth.WithComponent(componentAppID, credential),
+		)
 	}
 }

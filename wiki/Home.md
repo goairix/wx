@@ -412,13 +412,45 @@ config, err := client.JSSDK().BuildConfig(
 
 ### 网页授权
 
-业务层生成微信授权地址并取得回调 `code` 后，可以直接换取用户资料：
+授权地址由 SDK 生成，业务层不需要拼接微信域名或查询参数：
+
+```go
+authorizationURL := client.OAuth().AuthorizationURL(
+	"https://example.com/oauth/callback",
+	oauth.ScopeUserInfo,
+	state,
+)
+http.Redirect(writer, request, authorizationURL, http.StatusFound)
+```
+
+`oauth.ScopeBase` 用于静默授权，`oauth.ScopeUserInfo` 用于获取用户资料。scope 为空时默认使用 `oauth.ScopeBase`。
+
+`state` 由业务方生成和校验，用于防止 OAuth CSRF。建议使用密码学安全随机数并编码为 hex 或 Base62；取值只使用 `a-zA-Z0-9`，最多 128 字节。签发时将它与当前浏览器会话绑定；回调时校验内容、有效期和一次性使用状态，校验通过后立即失效。
+
+回调取得 `code` 后，可以直接换取用户资料：
 
 ```go
 user, err := client.OAuth().UserFromCode(ctx, code)
 ```
 
 网页授权 token 与公众号服务端 access token 是两套凭据，不应混用。
+
+通过开放平台代公众号完成网页授权时，使用 `AuthorizedOfficial` 创建客户端：
+
+```go
+officialClient, err := client.AuthorizedOfficial(
+	"authorized-official-app-id",
+	refreshToken,
+)
+
+authorizationURL := officialClient.OAuth().AuthorizationURL(
+	"https://example.com/oauth/callback",
+	oauth.ScopeUserInfo,
+	state,
+)
+```
+
+调用方式保持一致。SDK 会自动添加 `component_appid`，并在回调阶段通过 component access token 调用对应的 code 换 token 接口。
 
 ## 微信小程序
 

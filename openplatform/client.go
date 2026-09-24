@@ -153,6 +153,7 @@ func (c *Client) AuthorizedOfficial(appID, refreshToken string) (*official.Clien
 		official.WithTransport(c.transport),
 		official.WithCache(c.cache),
 		official.WithCredentialManager(manager),
+		official.WithOAuthComponent(c.config.AppID, c.component),
 	)
 }
 
