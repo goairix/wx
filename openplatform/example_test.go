@@ -15,7 +15,7 @@ import (
 func Example() {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"errcode":61004,"errmsg":"invalid component ticket"}`)
+		_, _ = fmt.Fprint(w, `{"errcode":61004,"errmsg":"invalid component ticket"}`)
 	}))
 	defer server.Close()
 
@@ -29,8 +29,8 @@ func Example() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if err := client.Component().SetVerifyTicket(ctx, "bad-ticket"); err != nil {
-		panic(err)
+	if ticketErr := client.Component().SetVerifyTicket(ctx, "bad-ticket"); ticketErr != nil {
+		panic(ticketErr)
 	}
 
 	_, err = client.Component().Token(ctx)

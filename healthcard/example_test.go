@@ -16,7 +16,7 @@ import (
 func Example() {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{
+		_, _ = fmt.Fprint(w, `{
 			"commonOut": {
 				"requestId": "health-request-id",
 				"resultCode": 4002,

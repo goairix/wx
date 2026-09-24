@@ -15,10 +15,17 @@ import (
 func TestEveryPlatformExposesLoggerOption(t *testing.T) {
 	logger := logging.Nop()
 
-	var _ official.Option = official.WithLogger(logger)
-	var _ miniapp.Option = miniapp.WithLogger(logger)
-	var _ mobileapp.Option = mobileapp.WithLogger(logger)
-	var _ openplatform.Option = openplatform.WithLogger(logger)
-	var _ work.Option = work.WithLogger(logger)
-	var _ healthcard.Option = healthcard.WithLogger(logger)
+	requireOfficialOption(official.WithLogger(logger))
+	requireMiniAppOption(miniapp.WithLogger(logger))
+	requireMobileAppOption(mobileapp.WithLogger(logger))
+	requireOpenPlatformOption(openplatform.WithLogger(logger))
+	requireWorkOption(work.WithLogger(logger))
+	requireHealthCardOption(healthcard.WithLogger(logger))
 }
+
+func requireOfficialOption(official.Option)         {}
+func requireMiniAppOption(miniapp.Option)           {}
+func requireMobileAppOption(mobileapp.Option)       {}
+func requireOpenPlatformOption(openplatform.Option) {}
+func requireWorkOption(work.Option)                 {}
+func requireHealthCardOption(healthcard.Option)     {}

@@ -2,16 +2,20 @@
 set -euo pipefail
 
 repository_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
-	printf 'pre-commit: not inside a Git repository\n' >&2
+	printf '✗ pre-commit: not inside a Git repository\n' >&2
 	exit 1
 }
 cd "$repository_root"
+hook_directory=$(cd "$(dirname "$0")" && pwd -P)
+# shellcheck source=lib.sh
+source "$hook_directory/lib.sh"
+export PATH="$repository_root/.tools/bin:$PATH"
 
 fail() {
-	printf 'pre-commit: %s\n' "$1" >&2
-	exit 1
+	hook_fail "pre-commit: $1"
 }
 
+hook_step 'pre-commit: checking staged content'
 git diff --cached --check || fail 'staged content has whitespace errors'
 
 temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/wx-pre-commit.XXXXXX") || fail 'could not create temporary directory'
@@ -40,31 +44,38 @@ while IFS= read -r -d '' file; do
 done <"$changed_paths"
 
 if [[ "$go_related" != true ]]; then
-	printf 'pre-commit: staged checks passed\n'
+	hook_success 'pre-commit: staged checks passed'
 	exit 0
 fi
 
 command -v go >/dev/null 2>&1 || fail 'go is not installed or not in PATH'
+command -v goimports >/dev/null 2>&1 || fail 'goimports is missing; run ./scripts/setup-hooks.sh'
+command -v shadow >/dev/null 2>&1 || fail 'shadow is missing; run ./scripts/setup-hooks.sh'
+command -v golangci-lint >/dev/null 2>&1 || fail 'golangci-lint is missing; run ./scripts/setup-hooks.sh'
 
 while IFS= read -r -d '' file; do
 	case "$file" in
 	*.go)
-		git diff --quiet -- "$file" || fail "$file has unstaged changes; run gofmt and stage it manually"
+		git diff --quiet -- "$file" || fail "$file has unstaged changes; run goimports and stage it manually"
 		[[ -f "$file" ]] || fail "$file is missing from the worktree; restore or restage it"
-		go_files+=("$file")
+		go_files+=("./$file")
 		;;
 	esac
 done <"$format_paths"
 
 if ((${#go_files[@]} > 0)); then
-	command -v gofmt >/dev/null 2>&1 || fail 'gofmt is not installed or not in PATH'
-	gofmt -w "${go_files[@]}" || fail 'gofmt failed'
+	hook_step "pre-commit: formatting ${#go_files[@]} staged Go file(s) with goimports"
+	goimports -w "${go_files[@]}" || fail 'goimports failed'
 	git add -- "${go_files[@]}"
 fi
 
 git diff --cached --check || fail 'formatted staged content has whitespace errors'
-printf 'pre-commit: running go test ./...\n'
+hook_step 'pre-commit: running go test ./...'
 go test ./... || fail 'go test ./... failed'
-printf 'pre-commit: running go vet ./...\n'
+hook_step 'pre-commit: running go vet ./...'
 go vet ./... || fail 'go vet ./... failed'
-printf 'pre-commit: all checks passed\n'
+hook_step 'pre-commit: running shadow analysis'
+go vet -vettool="$(command -v shadow)" ./... || fail 'shadow analysis failed'
+hook_step 'pre-commit: running golangci-lint'
+golangci-lint run ./... || fail 'golangci-lint failed'
+hook_success 'pre-commit: all checks passed'

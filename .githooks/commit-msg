@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+hook_directory=$(cd "$(dirname "$0")" && pwd -P)
+# shellcheck source=lib.sh
+source "$hook_directory/lib.sh"
+
+message_file=${1:-}
+[[ -n "$message_file" && -f "$message_file" ]] || hook_fail 'commit-msg: missing commit message file'
+
+first_line=$(sed -n '1p' "$message_file")
+[[ -n "$first_line" ]] || hook_fail 'commit-msg: subject must not be empty'
+
+case "$first_line" in
+Merge\ * | Revert\ \"* | fixup\!\ * | squash\!\ * | amend\!\ *)
+	hook_success 'commit-msg: generated message accepted'
+	exit 0
+	;;
+esac
+
+pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9][a-z0-9._/-]*\))?(!)?: (.+)$'
+if [[ ! "$first_line" =~ $pattern ]]; then
+	hook_fail 'commit-msg: expected <type>(<scope>)!: <subject>'
+fi
+
+subject=${BASH_REMATCH[4]}
+subject_length=${#subject}
+if ((subject_length < 5 || subject_length > 72)); then
+	hook_fail "commit-msg: subject must contain 5-72 characters (found $subject_length)"
+fi
+if [[ "$subject" =~ [[:space:]]$ ]]; then
+	hook_fail 'commit-msg: subject must not end with whitespace'
+fi
+
+normalized_subject=$(printf '%s' "$subject" | tr '[:upper:]' '[:lower:]')
+case "$normalized_subject" in
+fix | bug | test | update | change | add | remove | feature | refactor | style | docs | chore | perf | build | ci | revert | 修复 | 修改 | 测试 | 更新 | 改变 | 添加 | 删除 | 功能 | 重构 | 样式 | 文档 | 杂项 | 性能 | 构建 | 集成 | 回滚)
+	hook_fail 'commit-msg: subject is too vague; describe the concrete change'
+	;;
+esac
+
+hook_success 'commit-msg: format is valid'

@@ -38,7 +38,7 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 		transport.WithHook(s.hook),
 		transport.WithLogger(s.logger),
 	)
-	var c corecache.Cache = s.cache
+	c := s.cache
 	if c == nil {
 		c = corecache.NewMemory()
 	}

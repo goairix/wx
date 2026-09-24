@@ -17,9 +17,9 @@ func Example() {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/cgi-bin/gettoken":
-			fmt.Fprint(w, `{"access_token":"example-token","expires_in":7200}`)
+			_, _ = fmt.Fprint(w, `{"access_token":"example-token","expires_in":7200}`)
 		case "/cgi-bin/auth/getuserinfo":
-			fmt.Fprint(w, `{"errcode":40029,"errmsg":"invalid code"}`)
+			_, _ = fmt.Fprint(w, `{"errcode":40029,"errmsg":"invalid code"}`)
 		}
 	}))
 	defer server.Close()

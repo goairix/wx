@@ -508,7 +508,8 @@ func TestClientNormalizesNilContextForHook(t *testing.T) {
 		})),
 	)
 
-	if err := client.Do(nil, request.Request{
+	var nilContext context.Context
+	if err := client.Do(nilContext, request.Request{
 		Operation: "test.nil-context-hook",
 		Method:    http.MethodGet,
 		Path:      "/",

@@ -17,9 +17,9 @@ func Example() {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/cgi-bin/token":
-			fmt.Fprint(w, `{"access_token":"example-token","expires_in":7200}`)
+			_, _ = fmt.Fprint(w, `{"access_token":"example-token","expires_in":7200}`)
 		case "/cgi-bin/user/info":
-			fmt.Fprint(w, `{"errcode":40003,"errmsg":"invalid openid"}`)
+			_, _ = fmt.Fprint(w, `{"errcode":40003,"errmsg":"invalid openid"}`)
 		}
 	}))
 	defer server.Close()

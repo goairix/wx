@@ -67,7 +67,7 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 		)
 	}
 	c := &Client{config: config, transport: tr}
-	var cc corecache.Cache = state.cache
+	cc := state.cache
 	if cc == nil {
 		cc = corecache.NewMemory()
 	}

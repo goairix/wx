@@ -88,8 +88,8 @@ func EncryptMessage(
 		return "", err
 	}
 	randomPrefix := make([]byte, 16)
-	if _, err := rand.Read(randomPrefix); err != nil {
-		return "", fmt.Errorf("webhook: generate encryption prefix: %w", err)
+	if _, readErr := rand.Read(randomPrefix); readErr != nil {
+		return "", fmt.Errorf("webhook: generate encryption prefix: %w", readErr)
 	}
 	length := make([]byte, 4)
 	binary.BigEndian.PutUint32(length, uint32(len(message)))

@@ -24,8 +24,8 @@ func TestAppTokenCanBeSharedThroughCoreCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := first.AppToken(context.Background()); err != nil {
-		t.Fatal(err)
+	if _, tokenErr := first.AppToken(context.Background()); tokenErr != nil {
+		t.Fatal(tokenErr)
 	}
 
 	second, err := NewClient(

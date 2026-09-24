@@ -130,17 +130,17 @@ func VerifyWebhookContract(t *testing.T, factory WebhookFactory) {
 			Timestamp string `xml:"TimeStamp"`
 			Nonce     string `xml:"Nonce"`
 		}
-		if err := xml.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
-			t.Fatalf("response = %q, err = %v", response.Body.String(), err)
+		if unmarshalErr := xml.Unmarshal(response.Body.Bytes(), &envelope); unmarshalErr != nil {
+			t.Fatalf("response = %q, err = %v", response.Body.String(), unmarshalErr)
 		}
-		if err := corewebhook.VerifyMessageSignature(
+		if verifyErr := corewebhook.VerifyMessageSignature(
 			token,
 			envelope.Timestamp,
 			envelope.Nonce,
 			envelope.Encrypt,
 			envelope.Signature,
-		); err != nil {
-			t.Fatal(err)
+		); verifyErr != nil {
+			t.Fatal(verifyErr)
 		}
 		plain, err := corewebhook.DecryptMessage(
 			encodedKey,

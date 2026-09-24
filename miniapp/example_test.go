@@ -15,7 +15,7 @@ import (
 func Example() {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"errcode":40029,"errmsg":"invalid code"}`)
+		_, _ = fmt.Fprint(w, `{"errcode":40029,"errmsg":"invalid code"}`)
 	}))
 	defer server.Close()
 

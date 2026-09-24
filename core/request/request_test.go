@@ -8,8 +8,10 @@ import (
 	"github.com/goairix/wx/v2/core/transport"
 )
 
+var _ request.Caller = (*transport.Client)(nil)
+
 func TestTransportImplementsCaller(t *testing.T) {
-	var caller request.Caller = transport.New(nil, "https://example.test", transport.RetryPolicy{})
+	caller := transport.New(nil, "https://example.test", transport.RetryPolicy{})
 	if caller == nil {
 		t.Fatal("transport caller is nil")
 	}

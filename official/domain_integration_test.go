@@ -55,8 +55,8 @@ func TestOfficialDomainSurface(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	if err := client.Menu().Create(ctx, []menu.Item{{Type: "view", Name: "Home"}}); err != nil {
-		t.Fatal(err)
+	if createErr := client.Menu().Create(ctx, []menu.Item{{Type: "view", Name: "Home"}}); createErr != nil {
+		t.Fatal(createErr)
 	}
 	templateID, err := client.TemplateMessages().AddTemplate(ctx, "short-id")
 	if err != nil || templateID != "template-1" {

@@ -121,14 +121,14 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 		client = &http.Client{Timeout: 30 * time.Second}
 	}
 
-	endpoint, err := resolveURL(c.baseURL, req.Path, req.Query)
-	if err != nil {
-		c.logFailed(ctx, req, 0, 0, policy.MaxAttempts, 0, "", err)
-		return err
+	endpoint, resolveErr := resolveURL(c.baseURL, req.Path, req.Query)
+	if resolveErr != nil {
+		c.logFailed(ctx, req, 0, 0, policy.MaxAttempts, 0, "", resolveErr)
+		return resolveErr
 	}
-	body, err := encodeBody(req.Body)
-	if err != nil {
-		encodedErr := fmt.Errorf("encode %s request body: %w", req.Operation, err)
+	body, encodeErr := encodeBody(req.Body)
+	if encodeErr != nil {
+		encodedErr := fmt.Errorf("encode %s request body: %w", req.Operation, encodeErr)
 		c.logFailed(ctx, req, 0, 0, policy.MaxAttempts, 0, "", encodedErr)
 		return encodedErr
 	}
@@ -324,9 +324,9 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 	if lastErr != nil {
 		return lastErr
 	}
-	err = fmt.Errorf("request %s failed", req.Operation)
-	c.logFailed(ctx, req, 0, 0, policy.MaxAttempts, 0, "", err)
-	return err
+	requestErr := fmt.Errorf("request %s failed", req.Operation)
+	c.logFailed(ctx, req, 0, 0, policy.MaxAttempts, 0, "", requestErr)
+	return requestErr
 }
 
 func readAllLimited(reader io.Reader, limit int64) ([]byte, error) {

@@ -209,8 +209,8 @@ func TestOpenPlatformRequestContractsAndCredentialIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if err := client.AcceptVerifyTicket(ctx, "component-app", "ticket-1"); err != nil {
-		t.Fatal(err)
+	if ticketErr := client.AcceptVerifyTicket(ctx, "component-app", "ticket-1"); ticketErr != nil {
+		t.Fatal(ticketErr)
 	}
 
 	credential, err := client.Component().Token(ctx)
@@ -248,8 +248,8 @@ func TestOpenPlatformRequestContractsAndCredentialIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := officialClient.Users().Info(ctx, "openid-1"); err != nil {
-		t.Fatal(err)
+	if _, userErr := officialClient.Users().Info(ctx, "openid-1"); userErr != nil {
+		t.Fatal(userErr)
 	}
 	miniappClient, err := client.AuthorizedMiniApp(
 		"miniapp-app",
@@ -310,8 +310,8 @@ func TestOpenPlatformErrorIncludesTransportMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := client.Component().SetVerifyTicket(context.Background(), "ticket-1"); err != nil {
-		t.Fatal(err)
+	if ticketErr := client.Component().SetVerifyTicket(context.Background(), "ticket-1"); ticketErr != nil {
+		t.Fatal(ticketErr)
 	}
 	_, err = client.Templates().Drafts(context.Background())
 	var structured *wxerrors.Error
@@ -397,16 +397,16 @@ func TestAuthorizedFactoriesInheritTransportCacheAndHook(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if err := client.Component().SetVerifyTicket(ctx, "ticket-1"); err != nil {
-		t.Fatal(err)
+	if ticketErr := client.Component().SetVerifyTicket(ctx, "ticket-1"); ticketErr != nil {
+		t.Fatal(ticketErr)
 	}
 
 	officialClient, err := client.AuthorizedOfficial("official-app", "official-refresh-secret")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := officialClient.Users().Info(ctx, "openid-1"); err != nil {
-		t.Fatal(err)
+	if _, userErr := officialClient.Users().Info(ctx, "openid-1"); userErr != nil {
+		t.Fatal(userErr)
 	}
 
 	miniappClient, err := client.AuthorizedMiniApp("miniapp-app", "miniapp-refresh-secret")
@@ -481,8 +481,8 @@ func TestAuthorizedEntriesShareOneConcurrentCredentialRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if err := client.Component().SetVerifyTicket(ctx, "ticket-1"); err != nil {
-		t.Fatal(err)
+	if ticketErr := client.Component().SetVerifyTicket(ctx, "ticket-1"); ticketErr != nil {
+		t.Fatal(ticketErr)
 	}
 	officialClient, err := client.AuthorizedOfficial("shared-app", "shared-refresh-token")
 	if err != nil {

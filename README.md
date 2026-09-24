@@ -209,8 +209,18 @@ http.Handle("/wechat/callback", handler)
 ./scripts/setup-hooks.sh
 ```
 
-初始化后，普通提交和自动合并提交都会检查暂存内容。Go 相关变更会自动格式化已暂存的 Go 文件，
-并执行完整测试和 `go vet`；只修改文档时不会运行 Go 测试。日常提交不需要单独执行检查命令。
+初始化脚本会检查 `goimports`、`shadow` 和 `golangci-lint`，缺少时将兼容版本安装到仓库本地。
+普通提交和自动合并提交都会检查暂存内容。Go 相关变更会由 `goimports` 自动整理格式和导入，
+并执行完整测试、`go vet`、shadow 分析和 `golangci-lint`；只修改文档时不会运行 Go 检查。
+日常提交不需要单独执行检查命令。
+
+提交信息使用 Conventional Commits：
+
+```text
+feat(official): add permanent QR code API
+fix(webhook): validate encrypted message receiver
+docs: 完善微信公众号接入说明
+```
 
 扩展平台能力时，请沿用“平台根客户端 → 领域客户端 → 请求 DTO”的结构，并为公开 API、
 关键行为和使用方式补充测试与文档。
