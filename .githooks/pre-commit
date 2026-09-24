@@ -14,19 +14,30 @@ fail() {
 
 git diff --cached --check || fail 'staged content has whitespace errors'
 
+temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/wx-pre-commit.XXXXXX") || fail 'could not create temporary directory'
+cleanup() {
+	rm -rf "$temporary_directory"
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+changed_paths="$temporary_directory/changed-paths"
+format_paths="$temporary_directory/format-paths"
+git diff --cached --name-only --no-renames -z --diff-filter=ACMRD >"$changed_paths" || fail 'could not list staged files'
+git diff --cached --name-only --no-renames -z --diff-filter=ACMR >"$format_paths" || fail 'could not list staged Go files'
+
 go_related=false
 go_files=()
 while IFS= read -r -d '' file; do
 	case "$file" in
 	*.go)
 		go_related=true
-		[[ -f "$file" ]] && go_files+=("$file")
 		;;
 	go.mod | go.sum)
 		go_related=true
 		;;
 	esac
-done < <(git diff --cached --name-only -z --diff-filter=ACMR)
+done <"$changed_paths"
 
 if [[ "$go_related" != true ]]; then
 	printf 'pre-commit: staged checks passed\n'
@@ -35,11 +46,18 @@ fi
 
 command -v go >/dev/null 2>&1 || fail 'go is not installed or not in PATH'
 
+while IFS= read -r -d '' file; do
+	case "$file" in
+	*.go)
+		git diff --quiet -- "$file" || fail "$file has unstaged changes; run gofmt and stage it manually"
+		[[ -f "$file" ]] || fail "$file is missing from the worktree; restore or restage it"
+		go_files+=("$file")
+		;;
+	esac
+done <"$format_paths"
+
 if ((${#go_files[@]} > 0)); then
 	command -v gofmt >/dev/null 2>&1 || fail 'gofmt is not installed or not in PATH'
-	for file in "${go_files[@]}"; do
-		git diff --quiet -- "$file" || fail "$file has unstaged changes; run gofmt and stage it manually"
-	done
 	gofmt -w "${go_files[@]}" || fail 'gofmt failed'
 	git add -- "${go_files[@]}"
 fi

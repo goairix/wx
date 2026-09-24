@@ -4,7 +4,7 @@
 
 **Goal:** 删除本地根目录示例程序，并建立版本化、自动启用且不会误暂存代码的 Go pre-commit 检查。
 
-**Architecture:** `.githooks/pre-commit` 负责暂存区空白检查、Go 格式化、测试和 vet；`scripts/setup-hooks.sh` 只负责把当前仓库的 `core.hooksPath` 指向 `.githooks`。Hook 仅在 Go 相关文件变更时执行完整 Go 检查，并拒绝自动处理同时含有未暂存修改的 Go 文件。
+**Architecture:** `.githooks/pre-commit` 负责暂存区空白检查、Go 格式化、测试和 vet，`.githooks/pre-merge-commit` 让自动合并提交复用同一检查；`scripts/setup-hooks.sh` 只负责把当前仓库的 `core.hooksPath` 指向 `.githooks`。Hook 仅在 Go 相关文件变更时执行完整 Go 检查，并拒绝自动处理同时含有未暂存修改的 Go 文件。
 
 **Tech Stack:** Bash、Git、Go 1.23 标准工具链。
 
@@ -184,3 +184,17 @@ git diff --check
 ```
 
 预期：全部成功。
+
+### Task 4: 处理最终审查边界
+
+**Files:**
+- Modify: `.githooks/pre-commit`
+- Create: `.githooks/pre-merge-commit`
+- Modify: `scripts/setup-hooks.sh`
+- Modify: `README.md`
+
+- [x] 删除 Go 源码、`go.mod` 或 `go.sum` 时仍执行测试和 vet。
+- [x] 已暂存 Go 文件随后从工作区删除时拒绝提交。
+- [x] 暂存文件枚举失败时拒绝提交。
+- [x] 自动合并提交执行同一套检查。
+- [x] README 明确日常提交不需要单独执行检查命令。
