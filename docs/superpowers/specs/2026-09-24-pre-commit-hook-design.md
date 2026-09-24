@@ -10,10 +10,11 @@
 ## 文件与启用方式
 
 - 新建可执行文件 `.githooks/pre-commit`。
+- 新建可执行文件 `scripts/setup-hooks.sh`，作为项目初始化步骤配置 Hook。
 - 删除根目录旧脚本 `pre-commit`。
-- 当前仓库设置 `git config core.hooksPath .githooks`。
-- README 的开发章节记录同一条配置命令。Git 出于安全考虑不会从仓库内容自动启用 Hook，
-  因此新克隆只需执行一次该命令。
+- 本次实现直接为当前仓库设置 `core.hooksPath=.githooks`，用户无需额外操作，后续每次提交自动执行。
+- README 的开发章节把 `./scripts/setup-hooks.sh` 作为新克隆的初始化步骤。Git 出于安全考虑不会从
+  仓库内容自动启用 Hook，因此新克隆在项目初始化时执行一次脚本，日常提交无需再运行其它命令。
 
 ## Hook 行为
 
@@ -48,6 +49,7 @@ go vet ./...
 ## 验证
 
 - `bash -n .githooks/pre-commit` 验证脚本语法。
+- `bash -n scripts/setup-hooks.sh` 验证初始化脚本语法。
 - 在临时克隆中验证文档提交只运行轻量检查。
 - 在临时克隆中验证 Go 文件提交会运行格式化、测试和 vet。
 - 验证带未暂存修改的已暂存 Go 文件会被拒绝，且未暂存内容不会进入索引。
