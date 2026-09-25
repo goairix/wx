@@ -144,7 +144,8 @@ client, err := miniapp.NewClient(
 `wx.request.failed` 使用 Error。日志只包含平台、操作、方法、状态、错误码、尝试次数、耗时和
 request ID 等安全字段，不记录 URL、查询参数、请求头或正文。
 
-`core/observability.Hook` 用于指标和 tracing，可以与 Logger 同时配置。完整的事件字段、外部日志
+`core/observability.Hook` 用于指标和已有 span 的事件；`Observer` 为每次 HTTP 尝试建立独立的
+观测生命周期，并向 HTTP 客户端传递派生 context。两者都可以与 Logger 同时配置。完整的事件字段、外部日志
 适配示例和安全说明见 [`core/logging`](core/logging/README.md)。
 
 ## 错误处理

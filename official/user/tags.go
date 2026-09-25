@@ -3,8 +3,6 @@ package user
 import (
 	"context"
 	"strconv"
-
-	"github.com/goairix/wx/v2/official/internal/api"
 )
 
 // Tag describes an official account user tag.
@@ -25,7 +23,7 @@ type TaggedUsers struct {
 
 // TagClient manages official account user tags.
 type TagClient struct {
-	api *api.Client
+	api Caller
 }
 
 // Create creates a user tag.

@@ -11,13 +11,17 @@ import (
 
 // Client provides official account user APIs.
 type Client struct {
-	api  *api.Client
+	api  Caller
 	tags *TagClient
 }
 
 // NewClient constructs a user domain client.
 func NewClient(tr request.Caller, manager *auth.Manager) *Client {
-	executor := api.New(tr, manager)
+	return NewWithCaller(api.New(tr, manager))
+}
+
+// NewWithCaller constructs a user client with an authenticated caller.
+func NewWithCaller(executor Caller) *Client {
 	return &Client{
 		api:  executor,
 		tags: &TagClient{api: executor},

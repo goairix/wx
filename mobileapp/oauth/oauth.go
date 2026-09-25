@@ -63,6 +63,7 @@ func (c *Client) exchange(ctx context.Context, op, path string, q url.Values) (A
 	meta := &request.ResponseMeta{}
 	err := c.transport.Do(ctx, request.Request{
 		Operation: op,
+		RetryMode: request.RetryNever,
 		Platform:  "mobileapp",
 		Method:    http.MethodGet,
 		Path:      path,

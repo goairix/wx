@@ -44,11 +44,16 @@ type Ticket struct {
 
 // Client provides parameterized QR code APIs.
 type Client struct {
-	api *api.Client
+	api Caller
 }
 
 // NewClient constructs a QR code client.
 func NewClient(executor *api.Client) *Client {
+	return NewWithCaller(executor)
+}
+
+// NewWithCaller constructs a domain client with an authenticated caller.
+func NewWithCaller(executor Caller) *Client {
 	return &Client{api: executor}
 }
 

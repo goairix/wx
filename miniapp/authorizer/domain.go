@@ -2,13 +2,11 @@ package authorizer
 
 import (
 	"context"
-
-	"github.com/goairix/wx/v2/miniapp/internal/api"
 )
 
 // DomainClient manages server and web-view domains.
 type DomainClient struct {
-	api *api.Client
+	api Caller
 }
 
 // Modify updates the miniapp server domains.

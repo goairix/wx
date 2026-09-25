@@ -39,3 +39,28 @@ func TestNilHookFuncIsSafe(t *testing.T) {
 	hook.OnRequest(Event{Operation: "test.request"})
 	hook.OnResponse(Event{Operation: "test.response"})
 }
+
+func TestObserverFuncForwardsContextEventAndFinish(t *testing.T) {
+	ctx := context.Background()
+	event := Event{Operation: "test.observe", Attempt: 2, MaxAttempts: 3}
+	finished := false
+	observer := ObserverFunc(func(got context.Context, gotEvent Event) (context.Context, func(Event)) {
+		if got != ctx || gotEvent.Operation != event.Operation || gotEvent.Attempt != 2 {
+			t.Fatal("observer lost context or event")
+		}
+		return got, func(end Event) { finished = end.StatusCode == 200 }
+	})
+	got, finish := observer.Start(ctx, event)
+	if got != ctx || finish == nil {
+		t.Fatal("observer lost return values")
+	}
+	finish(Event{StatusCode: 200})
+	if !finished {
+		t.Fatal("finish not forwarded")
+	}
+	var nilObserver ObserverFunc
+	got, finish = nilObserver.Start(ctx, event)
+	if got != ctx || finish != nil {
+		t.Fatal("nil observer did not preserve context")
+	}
+}

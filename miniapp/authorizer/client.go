@@ -14,6 +14,11 @@ type Client struct {
 
 // NewClient constructs an authorized miniapp domain client.
 func NewClient(executor *api.Client) *Client {
+	return NewWithCaller(executor)
+}
+
+// NewWithCaller constructs a domain client with an authenticated caller.
+func NewWithCaller(executor Caller) *Client {
 	return &Client{
 		account:    &AccountClient{api: executor},
 		categories: &CategoryClient{api: executor},

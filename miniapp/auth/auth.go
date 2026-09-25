@@ -45,6 +45,7 @@ func (a *Auth) Code2Session(ctx context.Context, code string) (*Session, error) 
 	}
 	err := a.transport.Do(ctx, request.Request{
 		Operation: "miniapp.auth.code2session",
+		RetryMode: request.RetryNever,
 		Platform:  "miniapp",
 		Method:    http.MethodGet,
 		Path:      "sns/jscode2session",
@@ -68,10 +69,16 @@ func (a *Auth) Code2Session(ctx context.Context, code string) (*Session, error) 
 	return &out, nil
 }
 
+// Session exchanges a login code for session information.
+//
+// Deprecated: Use Code2Session instead.
 func (a *Auth) Session(ctx context.Context, code string) (*Session, error) {
 	return a.Code2Session(ctx, code)
 }
 
+// Get exchanges a login code for session information.
+//
+// Deprecated: Use Code2Session instead.
 func (a *Auth) Get(ctx context.Context, code string) (*Session, error) {
 	return a.Code2Session(ctx, code)
 }

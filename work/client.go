@@ -69,6 +69,7 @@ func NewClient(config Config, options ...Option) (*Client, error) {
 		baseURL,
 		settings.retry,
 		transport.WithHook(settings.hook),
+		transport.WithObserver(settings.observer),
 		transport.WithLogger(settings.logger),
 	)
 	credentialCache := settings.coreCache

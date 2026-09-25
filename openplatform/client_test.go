@@ -209,6 +209,7 @@ func TestOpenPlatformRequestContractsAndCredentialIsolation(t *testing.T) {
 		},
 		WithHTTPClient(server.Client()),
 		WithBaseURL(server.URL),
+		WithWorkBaseURL(server.URL),
 		WithCache(store),
 		WithHook(hook),
 	)

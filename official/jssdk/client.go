@@ -24,6 +24,11 @@ type Client struct {
 
 // NewClient constructs a JS SDK client.
 func NewClient(executor *api.Client, appID string, store cache.Cache) *Client {
+	return NewWithCaller(executor, appID, store)
+}
+
+// NewWithCaller constructs a domain client with an authenticated caller.
+func NewWithCaller(executor Caller, appID string, store cache.Cache) *Client {
 	client := &Client{
 		appID: appID,
 		now:   time.Now,

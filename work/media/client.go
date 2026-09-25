@@ -14,9 +14,14 @@ import (
 )
 
 // Client provides enterprise media APIs.
-type Client struct{ api *api.Client }
+type Client struct{ api Caller }
 
 func NewClient(executor *api.Client) *Client {
+	return NewWithCaller(executor)
+}
+
+// NewWithCaller constructs a domain client with an authenticated caller.
+func NewWithCaller(executor Caller) *Client {
 	return &Client{
 		api: executor,
 	}

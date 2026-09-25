@@ -9,9 +9,14 @@ import (
 )
 
 // Client provides enterprise mini program login APIs.
-type Client struct{ api *api.Client }
+type Client struct{ api Caller }
 
 func NewClient(executor *api.Client) *Client {
+	return NewWithCaller(executor)
+}
+
+// NewWithCaller constructs a domain client with an authenticated caller.
+func NewWithCaller(executor Caller) *Client {
 	return &Client{
 		api: executor,
 	}
@@ -27,7 +32,7 @@ type Session struct {
 // Session exchanges a mini program login code for a session.
 func (c *Client) Session(ctx context.Context, code string) (*Session, error) {
 	result := new(Session)
-	err := c.api.Get(
+	err := c.api.GetOnce(
 		ctx,
 		"work.miniapp.session",
 		"cgi-bin/miniprogram/jscode2session",

@@ -88,6 +88,7 @@ func (c *Client) TokenFromCode(ctx context.Context, code string) (*AccessTokenRe
 	meta := &request.ResponseMeta{}
 	err := c.transport.Do(ctx, request.Request{
 		Operation: "official.oauth.token",
+		RetryMode: request.RetryNever,
 		Platform:  "official",
 		Method:    http.MethodGet,
 		Path:      "sns/oauth2/access_token",
@@ -126,6 +127,7 @@ func (c *Client) componentTokenFromCode(
 	meta := new(request.ResponseMeta)
 	err = c.transport.Do(ctx, request.Request{
 		Operation: operation,
+		RetryMode: request.RetryNever,
 		Platform:  "official",
 		Method:    http.MethodGet,
 		Path:      "sns/oauth2/component/access_token",

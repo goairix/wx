@@ -75,6 +75,32 @@ func TestHandlerParsesJSONAndWritesResponse(t *testing.T) {
 	}
 }
 
+func TestHandlerPreservesNumericMessageID(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"MsgId":9007199254740993}`))
+	var got string
+	handler := NewHandler(HandlerFunc(func(_ context.Context, payload Payload) (Response, error) {
+		got = payload.Values["MsgId"]
+		return EmptyResponse(), nil
+	}))
+	handler.ServeHTTP(httptest.NewRecorder(), request)
+	if got != "9007199254740993" {
+		t.Fatalf("MsgId=%q", got)
+	}
+}
+
+func TestHandlerRejectsTrailingJSONValue(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"MsgId":1} {"MsgId":2}`))
+	handler := NewHandler(HandlerFunc(func(context.Context, Payload) (Response, error) {
+		t.Fatal("invalid payload reached handler")
+		return EmptyResponse(), nil
+	}))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d", response.Code)
+	}
+}
+
 func TestHandlerUsesInjectedErrorResponsePolicy(t *testing.T) {
 	policyCalls := 0
 	handler := NewHandler(HandlerFunc(func(context.Context, Payload) (Response, error) {

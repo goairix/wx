@@ -2,8 +2,6 @@ package authorizer
 
 import (
 	"context"
-
-	"github.com/goairix/wx/v2/miniapp/internal/api"
 )
 
 // AccountInfo describes a miniapp account and its modification quotas.
@@ -39,7 +37,7 @@ type AccountInfo struct {
 
 // AccountClient manages a miniapp's basic profile.
 type AccountClient struct {
-	api *api.Client
+	api Caller
 }
 
 // GetBaseInfo returns the miniapp's basic account information.

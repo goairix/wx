@@ -2,22 +2,23 @@ package security
 
 import (
 	"context"
-	"fmt"
-	"net/http"
-	"net/url"
 
 	"github.com/goairix/wx/v2/core/auth"
-	wxerrors "github.com/goairix/wx/v2/core/errors"
 	"github.com/goairix/wx/v2/core/request"
+	"github.com/goairix/wx/v2/miniapp/internal/api"
 )
 
-type Client struct {
-	transport request.Caller
-	auth      *auth.Manager
+// Client provides authenticated miniapp domain operations.
+type Client struct{ api Caller }
+
+// New constructs a domain client using the shared authenticated executor.
+func New(tr request.Caller, a *auth.Manager) *Client {
+	return NewWithCaller(api.New(tr, a))
 }
 
-func New(tr request.Caller, a *auth.Manager) *Client {
-	return &Client{transport: tr, auth: a}
+// NewWithCaller constructs a domain client with an authenticated caller.
+func NewWithCaller(caller Caller) *Client {
+	return &Client{api: caller}
 }
 
 type Scene int
@@ -57,54 +58,12 @@ type TextResult struct {
 	Detail  []Detail `json:"detail"`
 }
 
-type envelope struct {
-	ErrCode int    `json:"errcode"`
-	ErrMsg  string `json:"errmsg"`
-}
-
-func (e envelope) platformError() (int, string) {
-	return e.ErrCode, e.ErrMsg
-}
-
-func (c *Client) call(ctx context.Context, op, path string, body interface{}, out interface{}) error {
-	cred, err := c.auth.Token(ctx)
-	if err != nil {
-		return err
-	}
-	meta := &request.ResponseMeta{}
-	q := url.Values{"access_token": {cred.AccessToken}}
-	err = c.transport.Do(ctx, request.Request{
-		Operation: op,
-		Platform:  "miniapp",
-		Method:    http.MethodPost,
-		Path:      path,
-		Query:     q,
-		Body:      body,
-		Result:    out,
-		Meta:      meta,
-	})
-	if err != nil {
-		return err
-	}
-	if e, ok := out.(interface{ platformError() (int, string) }); ok {
-		code, message := e.platformError()
-		if code != 0 {
-			return &wxerrors.Error{
-				Platform:   "miniapp",
-				Operation:  op,
-				HTTPStatus: meta.StatusCode,
-				Code:       fmt.Sprint(code),
-				Message:    message,
-				RequestID:  meta.RequestID,
-			}
-		}
-	}
-	return nil
-}
-
-func (c *Client) CheckText(ctx context.Context, openid, content string, scene Scene) (TextResult, error) {
+func (c *Client) CheckText(
+	ctx context.Context,
+	openid, content string,
+	scene Scene,
+) (TextResult, error) {
 	var out struct {
-		envelope
 		TextResult
 	}
 	body := map[string]interface{}{
@@ -113,7 +72,7 @@ func (c *Client) CheckText(ctx context.Context, openid, content string, scene Sc
 		"scene":   scene,
 		"content": content,
 	}
-	err := c.call(ctx, "miniapp.security.check_text", "wxa/msg_sec_check", body, &out)
+	err := c.api.Post(ctx, "miniapp.security.check_text", "wxa/msg_sec_check", body, &out)
 	if err != nil {
 		return TextResult{}, err
 	}
@@ -127,7 +86,6 @@ func (c *Client) AsyncCheckMedia(
 	scene Scene,
 ) (string, error) {
 	var out struct {
-		envelope
 		TraceID string `json:"trace_id"`
 	}
 	body := map[string]interface{}{
@@ -137,7 +95,7 @@ func (c *Client) AsyncCheckMedia(
 		"media_url":  mediaURL,
 		"media_type": mediaType,
 	}
-	err := c.call(ctx, "miniapp.security.check_media", "wxa/media_check_async", body, &out)
+	err := c.api.Post(ctx, "miniapp.security.check_media", "wxa/media_check_async", body, &out)
 	if err != nil {
 		return "", err
 	}

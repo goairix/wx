@@ -31,7 +31,8 @@ defer cancel()
 ```
 
 构造函数只校验配置和组装对象，不发起网络请求。测试环境或代理环境可通过
-`WithBaseURL` 更换 API 地址。
+`WithBaseURL` 更换微信 API 地址；企业微信授权接口使用独立地址，可通过
+`WithWorkBaseURL` 更换。两者共享 HTTP client、重试策略、hook 和 logger。
 
 ## 接收 component_verify_ticket
 
@@ -86,6 +87,41 @@ client, err := openplatform.NewClient(
 `AuthorizedMiniApp` 对相同授权身份复用同一个凭证管理器，并发请求只触发一次 token 刷新。
 授权身份由 component AppID 和 authorizer AppID 确定。首次创建凭证管理器时采用传入的 refresh
 token；管理器存在后，重复构造客户端不会用调用方再次传入的 token 覆盖内部已轮换的新 token。
+
+重新授权时显式调用 `UpdateAuthorizer`；取消授权时调用 `RevokeAuthorizer`。两者更新共享凭证
+并清除旧 access token 缓存，因此已经创建的公众号、小程序和代码客户端也会采用新状态：
+
+```go
+err := client.UpdateAuthorizer(ctx, authorizerAppID, newRefreshToken)
+err = client.RevokeAuthorizer(ctx, authorizerAppID)
+```
+
+多实例应用可用 `WithRefreshTokenRepository(repository)` 替换只写的 store。仓库需实现：
+
+```go
+type RefreshTokenRepository interface {
+    SaveRefreshToken(ctx context.Context, authorizerAppID, refreshToken string) error
+    LoadRefreshToken(ctx context.Context, authorizerAppID string) (string, error)
+    DeleteRefreshToken(ctx context.Context, authorizerAppID string) error
+}
+```
+
+配置仓库后，它是授权状态的来源。首次使用前通过 `UpdateAuthorizer` 写入授权；工厂传入的
+refresh token 不会初始化仓库。每次刷新 access token 前都重新加载当前 refresh token，加载结果
+为空表示未授权，读取失败会直接返回错误。多个 component 共用存储时，仓库实现应自行隔离
+component 的记录。现有 access token 在缓存有效期内不会重新读取仓库；需要立即使其他实例
+失效时，应共享凭证 cache 并协调各实例的更新／撤销。
+
+刷新返回的新 token 若持久化失败，请求返回错误。下次刷新前先读取仓库并核对上次持久化的状态：
+仓库仍是原值时重试保存或删除；仓库已被其他客户端更新或撤销时，丢弃过时的待执行操作，采用
+仓库的新状态。若保存已完成但响应丢失，读取到待保存值后会直接确认成功，不重复保存。显式
+更新会替换待保存的旧 token；撤销会清除它。删除失败且仓库状态未改变时，后续刷新重试删除，
+并拒绝继续使用已撤销授权。调用方应处理读取、更新、删除及缓存失效错误并重试。
+只配置 `WithRefreshTokenStore` 时，撤销仅清除本实例状态及缓存，持久化记录需业务方自行删除。
+
+上述锁只协调同一客户端内的刷新和授权修改。仓库接口不提供跨进程事务或比较交换；多进程同时
+刷新、更新或撤销同一授权时，业务方仍需使用分布式锁或单一刷新服务协调写入。
+
 
 ## 账号授权
 
@@ -166,7 +202,7 @@ miniappClient, err := client.AuthorizedMiniApp(
 )
 ```
 
-企业微信第三方授权 API 可以复用同一 transport，但 suite access token 仍由调用方按接口要求传入：
+企业微信第三方授权 API 默认请求 `https://qyapi.weixin.qq.com`，suite access token 仍由调用方按接口要求传入：
 
 ```go
 result, err := client.WorkAuthorizer().PermanentCode(

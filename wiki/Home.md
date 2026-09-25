@@ -149,7 +149,7 @@ func newOfficialClient(
 | `core/transport` | 处理 HTTP、响应限制、重试和错误解析 | 通过平台的 `WithHTTPClient`、`WithRetryPolicy`、`WithBaseURL` 配置 | 需要代理、网关、连接池、自定义超时或复用 Transport 时配置 |
 | `core/errors` | 保存平台、操作名、状态码、错误码和 request ID | 对领域方法返回的错误使用标准库 `errors.Is`、`errors.As` | 需要按平台错误码分支或记录排障字段时使用 |
 | `core/logging` | 输出具有统一事件名、级别和字段的请求日志 | 通过平台 `WithLogger` 注入内置或外部 Logger | 需要把 SDK 日志接入应用统一日志系统时配置 |
-| `core/observability` | 为每次 HTTP 尝试产生请求和响应事件 | 创建 `observability.Hook`，通过平台 `WithHook` 注入 | 需要指标、trace 或统计重试次数时配置 |
+| `core/observability` | 为每次 HTTP 尝试产生观测事件并传递派生 context | 指标使用 `WithHook`，独立 span 使用 `WithObserver` | 需要指标、trace 或统计重试次数时配置 |
 | `core/webhook` | 签名校验、AES 解密、消息解析和响应封装 | 从平台客户端调用 `client.Webhook().Handler(...)` | 需要注册回调或自定义错误响应时使用 |
 | `core/random` | 生成密码学安全的随机字符串 | JS SDK 签名和加密回调 nonce 由 SDK 内部生成 | 业务需要同类随机标识时可调用 `random.String` |
 
@@ -161,7 +161,7 @@ func newOfficialClient(
 - **需要代理或统一网关**：注入自定义 `http.Client`；只有测试或网关场景才覆盖 Base URL。
 - **需要自动重试**：配置 `transport.RetryPolicy`，并确认目标操作允许安全重复执行。
 - **需要统一日志**：使用内置 `logging.NewText`，或实现 `logging.Logger` 后通过 `WithLogger` 注入。
-- **需要指标或 tracing**：实现 `observability.Hook`，通过 `WithHook` 注入。
+- **需要指标或 tracing**：通过 `WithHook` 采集指标；通过 `WithObserver` 创建独立 span 并传递 context。
 - **需要接收平台回调**：在平台 `Config` 中设置回调参数，再注册 `client.Webhook().Handler(...)`。
 - **需要测试业务代码**：替换 Base URL、HTTP Client、缓存或凭据 Provider，不访问真实平台。
 
@@ -671,6 +671,48 @@ store := openplatform.RefreshTokenStoreFunc(func(
 
 应用启动时应读取最新 refresh token，再传给授权方客户端。不要把 refresh token 写入日志。
 
+运行期间需要处理重新授权、撤销或多个实例共享授权状态时，使用
+`WithRefreshTokenRepository` 配置完整仓库。仓库接口包含：
+
+```go
+type RefreshTokenRepository interface {
+    LoadRefreshToken(ctx context.Context, authorizerAppID string) (string, error)
+    SaveRefreshToken(ctx context.Context, authorizerAppID, refreshToken string) error
+    DeleteRefreshToken(ctx context.Context, authorizerAppID string) error
+}
+```
+
+`LoadRefreshToken` 返回空字符串表示账号未授权，SDK 会停止刷新，不会回退到构造客户端时
+传入的旧值。仓库实现应绑定当前 component AppID，隔离不同开放平台账号的记录。
+每次刷新都会读取仓库最新值；构造函数不访问仓库。
+
+收到已验证的授权事件并换取授权资料后，显式更新授权：
+
+```go
+if err := client.UpdateAuthorizer(ctx, authorizerAppID, refreshToken); err != nil {
+    return err
+}
+```
+
+收到已验证的取消授权事件时：
+
+```go
+if err := client.RevokeAuthorizer(ctx, authorizerAppID); err != nil {
+    return err
+}
+```
+
+这两个方法会更新已经创建的授权方客户端，并清理其 access token 缓存。普通
+`AuthorizedOfficial` / `AuthorizedMiniApp` 构造调用不会覆盖已经轮换的 refresh token。
+首次使用完整仓库时，应先保存授权记录或调用 `UpdateAuthorizer`。
+
+原来的 `RefreshTokenStore` 继续支持保存轮换结果；它没有读取和删除能力，使用它时需由应用
+删除持久化授权记录。存储或缓存失效返回错误时，应重试生命周期操作。仓库接口不提供跨进程
+事务或互斥；多实例并发修改需要业务侧按授权账号串行协调，并共享 access token 缓存。
+
+`WorkAuthorizer()` 使用企业微信独立的 `qyapi.weixin.qq.com` endpoint；测试或代理环境使用
+`WithWorkBaseURL` 覆盖。`WithBaseURL` 只控制公众号、小程序和微信开放平台请求。
+
 ### 构造授权方客户端
 
 ```go
@@ -1080,6 +1122,26 @@ client, err := official.NewClient(
 
 identity 用于区分缓存中的凭据。不同租户、应用或授权账号必须使用不同 identity。
 
+### 主动使凭据失效
+
+需要管理平台提前拒绝的凭据时，可以自行创建 manager 并注入客户端：
+
+```go
+manager := auth.NewManager("official", appID, sharedCache, provider)
+client, err := official.NewClient(
+    official.Config{AppID: appID},
+    official.WithCredentialManager(manager),
+)
+```
+
+确认某个 access token 已失效后，调用 `manager.Invalidate(ctx, rejectedAccessToken)`。
+它只清除仍然匹配的缓存，保留其他请求刚刷新的 token。下一次 `Token` 或领域调用会重新获取凭据。
+显式重新授权时可以传空字符串清除当前缓存；开放平台应直接使用上述 `UpdateAuthorizer` /
+`RevokeAuthorizer`，以同时处理 refresh token 和 access token。
+
+失效与刷新在同一进程、同一 cache 实例内协调，等待支持 context 取消。分布式原子失效和刷新
+互斥需要由外部凭据服务负责。失效本身不会重放业务请求。
+
 ## 重试策略
 
 默认只发送一次请求。可以配置总尝试次数、退避时间和允许重试的 HTTP 状态：
@@ -1109,6 +1171,10 @@ client, err := official.NewClient(
 
 全局策略只定义重试上限，单次请求还必须允许重试。GET、HEAD、OPTIONS、PUT 和 DELETE
 默认可重试，POST 默认不重试。平台业务错误不会因为 HTTP 200 而自动重试。
+
+SDK 对一次性 code 兑换、登录确认，以及已封装的菜单和通讯录删除等 GET 写操作显式禁止重试。
+配置更大的 `MaxAttempts` 不会覆盖这些业务约束。若响应丢失，需要由业务重新发起授权或查询
+实际执行结果，不能重复提交已经消费的 code。
 
 发送消息、创建资源、提交审核、发布代码和上报数据都可能产生副作用。业务层需要使用平台支持的
 幂等字段或自己的业务幂等记录，不能依赖 HTTP 重试保证幂等。
@@ -1468,6 +1534,46 @@ request ID、错误文本或用户标识，避免指标基数失控。request ID
 Hook 无法判断某次失败是否随后重试成功，因此示例不会把当前业务 span 标记为 Error，也不会调用
 `RecordError` 写入原始错误文本。业务代码应根据 SDK 方法最终返回的 `err` 决定 span 状态。
 
+如果需要为每次 HTTP 尝试创建独立 span，并让 HTTP 客户端和日志收到该 span 的 context，使用
+`Observer`。它为每次尝试返回独立的结束函数，适用于同一 context 下并发调用相同接口：
+
+```go
+package wxadapter
+
+import (
+    "context"
+
+    "github.com/goairix/wx/v2/core/observability"
+    "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/codes"
+    oteltrace "go.opentelemetry.io/otel/trace"
+)
+
+func NewTraceObserver(tracer oteltrace.Tracer) observability.Observer {
+    return observability.ObserverFunc(func(
+        ctx context.Context,
+        event observability.Event,
+    ) (context.Context, func(observability.Event)) {
+        ctx, span := tracer.Start(ctx, event.Operation,
+            oteltrace.WithSpanKind(oteltrace.SpanKindClient),
+            oteltrace.WithAttributes(attribute.String("wx.platform", event.Platform)),
+        )
+        return ctx, func(result observability.Event) {
+            defer span.End()
+            span.SetAttributes(attribute.Int("http.response.status_code", result.StatusCode))
+            if result.Err != nil {
+                span.SetStatus(codes.Error, "WeChat request failed")
+            }
+        }
+    })
+}
+```
+
+通过 `official.WithObserver(observer)` 等平台选项注入。Observer 可以与现有的指标 Hook 和
+Logger 同时使用；发生重试时，每次尝试各自开始、结束。若已通过 `WithTransport` 注入完整
+transport，请在该 transport 上配置 Observer。SDK 不自动注入外部服务的 trace 请求头，
+如需 HTTP 链路传播，应由应用配置相应的 HTTP transport instrumentation。
+
 zap Logger 与 OpenTelemetry Hook 可以同时注入：
 
 ```go
@@ -1625,6 +1731,22 @@ client, err := official.NewClient(
 - 使用自定义 `http.Client` 模拟网络错误和超时。
 - 电子健康卡可用 `WithClock` 和 `WithRequestID` 固定时间与 request ID。
 - webhook 测试可使用 `httptest.NewRequest` 和 `httptest.NewRecorder`。
+
+### 单独测试领域模块
+
+公众号、企业微信和小程序的相关领域提供 `NewWithCaller` 构造入口，依赖该领域公开的
+`Caller` 接口。测试实现接口中需要的 `Get`、`Post`、`GetOnce` 等方法后，可以直接创建领域客户端，
+无须导入 SDK 的 `internal` 包，也无须启动 HTTP 服务。素材领域还声明了二进制调用能力。
+
+```go
+menuClient := menu.NewWithCaller(fakeCaller)
+err := menuClient.Create(ctx, []menu.Item{
+    {Type: "click", Name: "帮助", Key: "help"},
+})
+```
+
+这些 Caller 接收已经具名的业务操作；自定义实现需负责认证、平台错误转换和明确的重试语义。
+普通应用仍通过平台根客户端取得领域对象，旧的领域构造函数继续可用。
 
 ### 项目验证
 

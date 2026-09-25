@@ -14,6 +14,11 @@ type Client struct {
 
 // NewClient constructs an authorizer domain client.
 func NewClient(executor *api.Client) *Client {
+	return NewWithCaller(executor)
+}
+
+// NewWithCaller constructs a domain client with an authenticated caller.
+func NewWithCaller(executor Caller) *Client {
 	return &Client{open: &OpenClient{api: executor}}
 }
 
@@ -24,7 +29,7 @@ func (c *Client) Open() *OpenClient {
 
 // OpenClient manages Open Platform account bindings.
 type OpenClient struct {
-	api *api.Client
+	api Caller
 }
 
 // Create creates an Open Platform account and binds appID to it.

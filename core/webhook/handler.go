@@ -120,8 +120,14 @@ func readPayload(r *http.Request) (Payload, error) {
 	if len(bytes.TrimSpace(body)) > 0 && bytes.TrimSpace(body)[0] == '{' || contains(format, "json") {
 		payload.Format = "json"
 		var value interface{}
-		if err := json.Unmarshal(body, &value); err != nil {
+		decoder := json.NewDecoder(bytes.NewReader(body))
+		decoder.UseNumber()
+		if err := decoder.Decode(&value); err != nil {
 			return Payload{}, fmt.Errorf("parse webhook json: %w", err)
+		}
+		var trailing interface{}
+		if err := decoder.Decode(&trailing); err != io.EOF {
+			return Payload{}, fmt.Errorf("parse webhook json: trailing content")
 		}
 		flattenJSON(payload.Values, "", value)
 		return payload, nil

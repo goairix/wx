@@ -36,6 +36,7 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 		base,
 		s.retry,
 		transport.WithHook(s.hook),
+		transport.WithObserver(s.observer),
 		transport.WithLogger(s.logger),
 	)
 	c := s.cache

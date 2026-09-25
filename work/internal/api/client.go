@@ -14,6 +14,7 @@ import (
 	"github.com/goairix/wx/v2/core/auth"
 	wxerrors "github.com/goairix/wx/v2/core/errors"
 	"github.com/goairix/wx/v2/core/request"
+	"github.com/goairix/wx/v2/internal/wechat"
 )
 
 const platform = "work"
@@ -42,6 +43,19 @@ func (c *Client) Do(
 	body interface{},
 	result interface{},
 ) error {
+	return c.do(ctx, operation, method, path, query, body, result, request.RetryDefault)
+}
+
+func (c *Client) do(
+	ctx context.Context,
+	operation string,
+	method string,
+	path string,
+	query url.Values,
+	body interface{},
+	result interface{},
+	retryMode request.RetryMode,
+) error {
 	credential, err := c.auth.Token(ctx)
 	if err != nil {
 		return err
@@ -52,8 +66,10 @@ func (c *Client) Do(
 	query.Set("access_token", credential.AccessToken)
 
 	meta := new(request.ResponseMeta)
-	envelope := responseEnvelope{
-		value: result,
+	envelope := wechat.Response{
+		Platform:  platform,
+		Operation: operation,
+		Value:     result,
 	}
 	err = c.transport.Do(ctx, request.Request{
 		Operation: operation,
@@ -63,22 +79,13 @@ func (c *Client) Do(
 		Query:     query,
 		Body:      body,
 		Result:    &envelope,
+		RetryMode: retryMode,
 		Meta:      meta,
 	})
 	if err != nil {
 		return err
 	}
-	if envelope.ErrCode != 0 {
-		return &wxerrors.Error{
-			Platform:   platform,
-			Operation:  operation,
-			HTTPStatus: meta.StatusCode,
-			Code:       strconv.Itoa(envelope.ErrCode),
-			Message:    envelope.ErrMsg,
-			RequestID:  meta.RequestID,
-		}
-	}
-	return nil
+	return envelope.Error(*meta)
 }
 
 // Get executes an authenticated GET request.
@@ -197,4 +204,15 @@ func looksLikeJSON(contentType string, data []byte) bool {
 
 func (c *Client) String() string {
 	return fmt.Sprintf("work api client %p", c)
+}
+
+// GetOnce executes a GET whose side effects or one-time input prohibit retries.
+func (c *Client) GetOnce(
+	ctx context.Context,
+	operation string,
+	path string,
+	query url.Values,
+	result interface{},
+) error {
+	return c.do(ctx, operation, http.MethodGet, path, query, nil, result, request.RetryNever)
 }

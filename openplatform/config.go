@@ -19,13 +19,16 @@ type Config struct {
 }
 
 type option struct {
-	httpClient    *http.Client
-	baseURL       string
-	cache         corecache.Cache
-	retry         transport.RetryPolicy
-	hook          observability.Hook
-	logger        logging.Logger
-	refreshTokens RefreshTokenStore
+	httpClient        *http.Client
+	baseURL           string
+	workBaseURL       string
+	cache             corecache.Cache
+	retry             transport.RetryPolicy
+	hook              observability.Hook
+	observer          observability.Observer
+	logger            logging.Logger
+	refreshTokens     RefreshTokenStore
+	refreshRepository RefreshTokenRepository
 }
 
 // Option customizes an Open Platform client.
@@ -43,6 +46,11 @@ func WithBaseURL(baseURL string) Option {
 	return func(settings *option) {
 		settings.baseURL = baseURL
 	}
+}
+
+// WithWorkBaseURL overrides the enterprise WeChat API endpoint.
+func WithWorkBaseURL(baseURL string) Option {
+	return func(settings *option) { settings.workBaseURL = baseURL }
 }
 
 // WithCache configures the component and authorizer credential cache.
@@ -78,6 +86,24 @@ type RefreshTokenStore interface {
 	SaveRefreshToken(ctx context.Context, authorizerAppID, refreshToken string) error
 }
 
+// RefreshTokenRepository stores the authoritative authorization state. An empty
+// loaded token means the account is not authorized. Implementations must scope
+// records to the component when multiple components share a backend.
+type RefreshTokenRepository interface {
+	RefreshTokenStore
+	LoadRefreshToken(ctx context.Context, authorizerAppID string) (string, error)
+	DeleteRefreshToken(ctx context.Context, authorizerAppID string) error
+}
+
+// WithRefreshTokenRepository loads the current token before each authorizer
+// refresh. Seed authorization using UpdateAuthorizer before using child clients.
+func WithRefreshTokenRepository(repository RefreshTokenRepository) Option {
+	return func(settings *option) {
+		settings.refreshRepository = repository
+		settings.refreshTokens = repository
+	}
+}
+
 // RefreshTokenStoreFunc adapts a function to RefreshTokenStore.
 type RefreshTokenStoreFunc func(
 	ctx context.Context,
@@ -98,5 +124,14 @@ func (f RefreshTokenStoreFunc) SaveRefreshToken(
 func WithRefreshTokenStore(store RefreshTokenStore) Option {
 	return func(settings *option) {
 		settings.refreshTokens = store
+		settings.refreshRepository = nil
+	}
+}
+
+// WithObserver configures a context-propagating observer for each HTTP attempt.
+// When a shared transport is supplied, configure its observer on that transport.
+func WithObserver(observer observability.Observer) Option {
+	return func(settings *option) {
+		settings.observer = observer
 	}
 }

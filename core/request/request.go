@@ -25,6 +25,14 @@ type Caller interface {
 	Do(ctx context.Context, req Request) error
 }
 
+// ResponseDecoder handles business errors and decoding for a successful HTTP
+// response. Transport invokes it once instead of its default platform parser and
+// JSON decoder. Empty responses requiring a result are rejected before this call;
+// HTTP 204 responses do not require decoding.
+type ResponseDecoder interface {
+	DecodeResponse(body []byte, meta ResponseMeta) error
+}
+
 // Request describes an API request before it is encoded for transport.
 type Request struct {
 	Operation string

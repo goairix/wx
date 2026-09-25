@@ -9,11 +9,16 @@ import (
 
 // Client provides application and group message APIs.
 type Client struct {
-	api     *api.Client
+	api     Caller
 	agentID int64
 }
 
 func NewClient(executor *api.Client, agentID int64) *Client {
+	return NewWithCaller(executor, agentID)
+}
+
+// NewWithCaller constructs a domain client with an authenticated caller.
+func NewWithCaller(executor Caller, agentID int64) *Client {
 	return &Client{
 		api:     executor,
 		agentID: agentID,

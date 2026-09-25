@@ -2,13 +2,11 @@ package authorizer
 
 import (
 	"context"
-
-	"github.com/goairix/wx/v2/miniapp/internal/api"
 )
 
 // TesterClient manages miniapp experience members.
 type TesterClient struct {
-	api *api.Client
+	api Caller
 }
 
 // Bind adds an experience member and returns its user identifier.

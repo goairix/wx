@@ -30,6 +30,7 @@ type Client struct {
 	baseURL          string
 	retry            RetryPolicy
 	hook             observability.Hook
+	observer         observability.Observer
 	logger           logging.Logger
 	maxResponseBytes int64
 }
@@ -41,6 +42,7 @@ type Option interface {
 
 type clientOptions struct {
 	hook             observability.Hook
+	observer         observability.Observer
 	logger           logging.Logger
 	maxResponseBytes int64
 }
@@ -65,6 +67,11 @@ func WithHook(hook observability.Hook) Option {
 	return optionFunc(func(options *clientOptions) {
 		options.hook = hook
 	})
+}
+
+// WithObserver instruments each HTTP attempt and may derive its context.
+func WithObserver(observer observability.Observer) Option {
+	return optionFunc(func(options *clientOptions) { options.observer = observer })
 }
 
 // WithLogger configures the structured logger used for request lifecycle
@@ -96,6 +103,7 @@ func New(
 		baseURL:          strings.TrimRight(baseURL, "/"),
 		retry:            retry.normalized(),
 		hook:             settings.hook,
+		observer:         settings.observer,
 		logger:           normalizeLogger(settings.logger),
 		maxResponseBytes: settings.maxResponseBytes,
 	}
@@ -121,11 +129,6 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 		client = &http.Client{Timeout: 30 * time.Second}
 	}
 
-	endpoint, resolveErr := resolveURL(c.baseURL, req.Path, req.Query)
-	if resolveErr != nil {
-		c.logFailed(ctx, req, 0, 0, policy.MaxAttempts, 0, "", resolveErr)
-		return resolveErr
-	}
 	body, encodeErr := encodeBody(req.Body)
 	if encodeErr != nil {
 		encodedErr := fmt.Errorf("encode %s request body: %w", req.Operation, encodeErr)
@@ -133,200 +136,181 @@ func (c *Client) Do(ctx context.Context, req request.Request) error {
 		return encodedErr
 	}
 
-	var lastErr error
 	for attempt := 1; attempt <= policy.MaxAttempts; attempt++ {
 		if err := ctx.Err(); err != nil {
 			c.logFailed(ctx, req, 0, attempt, policy.MaxAttempts, 0, "", err)
 			return err
 		}
-		httpReq, err := http.NewRequestWithContext(ctx, req.Method, endpoint, bytes.NewReader(body))
-		if err != nil {
-			c.logFailed(ctx, req, 0, attempt, policy.MaxAttempts, 0, "", err)
-			return err
+		outcome := c.doAttempt(ctx, client, req, body, attempt, policy.MaxAttempts)
+		event := outcome.event
+		if event.Err == nil {
+			c.logCompleted(event.Context, req, event.StatusCode, attempt, policy.MaxAttempts, event.Duration, event.RequestID)
+			return nil
 		}
-		httpReq.Header = cloneHeader(req.Header)
-		if req.Body != nil && httpReq.Header.Get("Content-Type") == "" {
-			httpReq.Header.Set("Content-Type", "application/json")
-		}
-		c.logStarted(ctx, req, attempt, policy.MaxAttempts)
-		if c.hook != nil {
-			c.hook.OnRequest(observability.Event{
-				Context:   ctx,
-				Operation: req.Operation,
-				Platform:  req.Platform,
-			})
-		}
-		started := time.Now()
-		response, doErr := client.Do(httpReq)
-		if doErr != nil {
-			duration := time.Since(started)
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				c.observeResponse(ctx, req, 0, "", duration, ctxErr)
-				c.logFailed(ctx, req, 0, attempt, policy.MaxAttempts, duration, "", ctxErr)
-				return ctxErr
+		if attempt < policy.MaxAttempts && retryableRequest(req) && outcome.retryable &&
+			(event.StatusCode == 0 || policy.RetryStatus[event.StatusCode]) {
+			delay := policy.Backoff(attempt)
+			c.logRetrying(event.Context, req, event.StatusCode, attempt, policy.MaxAttempts, event.Duration, delay, event.RequestID, event.Err)
+			if err := waitBackoff(ctx, delay); err != nil {
+				c.logFailed(event.Context, req, event.StatusCode, attempt, policy.MaxAttempts, event.Duration, event.RequestID, err)
+				return err
 			}
-			lastErr = doErr
-			c.observeResponse(ctx, req, 0, "", duration, doErr)
-			if attempt < policy.MaxAttempts && retryableRequest(req) {
-				delay := policy.Backoff(attempt)
-				c.logRetrying(ctx, req, 0, attempt, policy.MaxAttempts, duration, delay, "", doErr)
-				if err := waitBackoff(ctx, delay); err != nil {
-					c.logFailed(ctx, req, 0, attempt, policy.MaxAttempts, duration, "", err)
-					return err
-				}
-				continue
-			}
-			c.logFailed(ctx, req, 0, attempt, policy.MaxAttempts, duration, "", doErr)
-			break
+			continue
 		}
-		requestID := response.Header.Get("X-Request-Id")
-		if requestID == "" {
-			requestID = response.Header.Get("Request-Id")
-		}
-		if req.Meta != nil {
-			req.Meta.StatusCode = response.StatusCode
-			req.Meta.Header = response.Header.Clone()
-			req.Meta.RequestID = requestID
-		}
-		if req.ResponseWriter != nil &&
-			response.StatusCode >= http.StatusOK &&
-			response.StatusCode < http.StatusMultipleChoices &&
-			!strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "json") {
-			_, copyErr := io.Copy(req.ResponseWriter, response.Body)
-			_ = response.Body.Close()
-			duration := time.Since(started)
-			c.observeResponse(
-				ctx,
-				req,
-				response.StatusCode,
-				requestID,
-				duration,
-				copyErr,
-			)
-			if copyErr != nil {
-				c.logFailed(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID, copyErr)
-			} else {
-				c.logCompleted(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID)
-			}
-			return copyErr
-		}
+		c.logFailed(event.Context, req, event.StatusCode, attempt, policy.MaxAttempts, event.Duration, event.RequestID, event.Err)
+		return event.Err
+	}
+	return fmt.Errorf("request %s failed", req.Operation)
+}
 
-		responseBody, readErr := readAllLimited(response.Body, c.maxResponseBytes)
-		_ = response.Body.Close()
-		if readErr != nil {
-			lastErr = readErr
-			duration := time.Since(started)
-			c.observeResponse(
-				ctx,
-				req,
-				response.StatusCode,
-				requestID,
-				duration,
-				readErr,
-			)
-			c.logFailed(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID, readErr)
-			break
+type attemptOutcome struct {
+	event     observability.Event
+	retryable bool
+}
+
+// doAttempt owns the observation lifecycle so every exit completes exactly once.
+func (c *Client) doAttempt(
+	ctx context.Context,
+	client *http.Client,
+	req request.Request,
+	body []byte,
+	attempt int,
+	maxAttempts int,
+) (outcome attemptOutcome) {
+	outcome.event = observability.Event{
+		Context:     ctx,
+		Operation:   req.Operation,
+		Platform:    req.Platform,
+		Attempt:     attempt,
+		MaxAttempts: maxAttempts,
+	}
+	var finish func(observability.Event)
+	if c.observer != nil {
+		derived, end := c.observer.Start(ctx, outcome.event)
+		if derived != nil {
+			ctx = derived
 		}
-		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-			lastErr = wxerrors.ParsePlatformError(req.Platform, req.Operation, response.StatusCode, responseBody, requestID)
-			duration := time.Since(started)
-			c.observeResponse(
-				ctx,
-				req,
-				response.StatusCode,
-				requestID,
-				duration,
-				lastErr,
-			)
-			if attempt < policy.MaxAttempts &&
-				retryableRequest(req) &&
-				policy.RetryStatus[response.StatusCode] {
-				delay := policy.Backoff(attempt)
-				c.logRetrying(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, delay, requestID, lastErr)
-				if err := waitBackoff(ctx, delay); err != nil {
-					c.logFailed(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID, err)
-					return err
-				}
-				continue
-			}
-			c.logFailed(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID, lastErr)
-			return lastErr
+		finish = end
+	}
+	outcome.event.Context = ctx
+	started := time.Now()
+	hookStarted := false
+	defer func() {
+		if err := ctx.Err(); err != nil {
+			outcome.event.Err = err
+			outcome.retryable = false
 		}
-		if platformErr := wxerrors.ParseResponseError(
-			req.Platform,
-			req.Operation,
-			response.StatusCode,
-			responseBody,
-			requestID,
-		); platformErr != nil {
-			duration := time.Since(started)
-			c.observeResponse(
-				ctx,
-				req,
-				response.StatusCode,
-				requestID,
-				duration,
-				platformErr,
-			)
-			c.logFailed(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID, platformErr)
-			return platformErr
+		outcome.event.Duration = time.Since(started)
+		if hookStarted && c.hook != nil {
+			c.hook.OnResponse(outcome.event)
 		}
-		if req.ResponseWriter != nil {
-			_, writeErr := req.ResponseWriter.Write(responseBody)
-			duration := time.Since(started)
-			c.observeResponse(
-				ctx,
-				req,
-				response.StatusCode,
-				requestID,
-				duration,
-				writeErr,
-			)
-			if writeErr != nil {
-				c.logFailed(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID, writeErr)
-			} else {
-				c.logCompleted(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID)
-			}
-			return writeErr
+		if finish != nil {
+			event := outcome.event
+			// URL wrappers may contain credentials in their query string. Hooks
+			// retain legacy errors; new observations use the same safe error as logs.
+			event.Err = safeLogError(event.Err)
+			finish(event)
 		}
-		if req.Result == nil || len(responseBody) == 0 || response.StatusCode == http.StatusNoContent {
-			duration := time.Since(started)
-			c.observeResponse(ctx, req, response.StatusCode, requestID, duration, nil)
-			c.logCompleted(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID)
+	}()
+	if err := ctx.Err(); err != nil {
+		outcome.event.Err = err
+		return
+	}
+	endpoint, err := resolveURL(c.baseURL, req.Path, req.Query)
+	if err != nil {
+		outcome.event.Err = err
+		return
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, req.Method, endpoint, bytes.NewReader(body))
+	if err != nil {
+		outcome.event.Err = err
+		return
+	}
+	if req.RetryMode == request.RetryNever {
+		// net/http can replay GETs on a reused connection independently of our
+		// retry loop. An opaque, non-rewindable body prevents that replay, even
+		// for an empty GET. For empty GETs, the standard transport probes the
+		// reader and sends no body or chunked encoding.
+		httpReq.Body = io.NopCloser(bytes.NewReader(body))
+		httpReq.GetBody = nil
+	}
+	httpReq.Header = cloneHeader(req.Header)
+	if req.Body != nil && httpReq.Header.Get("Content-Type") == "" {
+		httpReq.Header.Set("Content-Type", "application/json")
+	}
+	c.logStarted(ctx, req, attempt, maxAttempts)
+	if c.hook != nil {
+		c.hook.OnRequest(outcome.event)
+		hookStarted = true
+	}
+	started = time.Now()
+	response, err := client.Do(httpReq)
+	if err != nil {
+		outcome.event.Err = err
+		outcome.retryable = true
+		return
+	}
+	defer func() { _ = response.Body.Close() }()
+	outcome.event.StatusCode = response.StatusCode
+	outcome.event.RequestID = response.Header.Get("X-Request-Id")
+	if outcome.event.RequestID == "" {
+		outcome.event.RequestID = response.Header.Get("Request-Id")
+	}
+	meta := request.ResponseMeta{
+		StatusCode: response.StatusCode,
+		Header:     response.Header.Clone(),
+		RequestID:  outcome.event.RequestID,
+	}
+	if req.Meta != nil {
+		*req.Meta = meta
+	}
+	success := response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices
+	if req.ResponseWriter != nil && success && !strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "json") {
+		_, outcome.event.Err = io.Copy(req.ResponseWriter, response.Body)
+		return
+	}
+	responseBody, err := readAllLimited(response.Body, c.maxResponseBytes)
+	if err != nil {
+		outcome.event.Err = err
+		return
+	}
+	if !success {
+		outcome.event.Err = wxerrors.ParsePlatformError(req.Platform, req.Operation, response.StatusCode, responseBody, meta.RequestID)
+		outcome.retryable = true
+		return
+	}
+	outcome.event.Err = decodeResponse(req, responseBody, meta)
+	return
+}
+
+func decodeResponse(req request.Request, body []byte, meta request.ResponseMeta) error {
+	if decoder, ok := req.Result.(request.ResponseDecoder); ok {
+		if meta.StatusCode == http.StatusNoContent {
 			return nil
 		}
-		if bytesResult, ok := req.Result.(*[]byte); ok {
-			*bytesResult = append((*bytesResult)[:0], responseBody...)
-			duration := time.Since(started)
-			c.observeResponse(ctx, req, response.StatusCode, requestID, duration, nil)
-			c.logCompleted(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID)
-			return nil
+		if len(bytes.TrimSpace(body)) == 0 {
+			return fmt.Errorf("decode %s response: %w", req.Operation, io.ErrUnexpectedEOF)
 		}
-		if err := json.Unmarshal(responseBody, req.Result); err != nil {
-			decodeErr := fmt.Errorf("decode %s response: %w", req.Operation, err)
-			duration := time.Since(started)
-			c.observeResponse(
-				ctx,
-				req,
-				response.StatusCode,
-				requestID,
-				duration,
-				decodeErr,
-			)
-			c.logFailed(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID, decodeErr)
-			return decodeErr
-		}
-		duration := time.Since(started)
-		c.observeResponse(ctx, req, response.StatusCode, requestID, duration, nil)
-		c.logCompleted(ctx, req, response.StatusCode, attempt, policy.MaxAttempts, duration, requestID)
+		return decoder.DecodeResponse(body, meta)
+	}
+	if err := wxerrors.ParseResponseError(req.Platform, req.Operation, meta.StatusCode, body, meta.RequestID); err != nil {
+		return err
+	}
+	if req.ResponseWriter != nil {
+		_, err := req.ResponseWriter.Write(body)
+		return err
+	}
+	if req.Result == nil || meta.StatusCode == http.StatusNoContent {
 		return nil
 	}
-	if lastErr != nil {
-		return lastErr
+	if result, ok := req.Result.(*[]byte); ok {
+		*result = append((*result)[:0], body...)
+		return nil
 	}
-	requestErr := fmt.Errorf("request %s failed", req.Operation)
-	c.logFailed(ctx, req, 0, 0, policy.MaxAttempts, 0, "", requestErr)
-	return requestErr
+	if err := json.Unmarshal(body, req.Result); err != nil {
+		return fmt.Errorf("decode %s response: %w", req.Operation, err)
+	}
+	return nil
 }
 
 func readAllLimited(reader io.Reader, limit int64) ([]byte, error) {
@@ -341,28 +325,6 @@ func readAllLimited(reader io.Reader, limit int64) ([]byte, error) {
 		return nil, ErrResponseTooLarge
 	}
 	return data, nil
-}
-
-func (c *Client) observeResponse(
-	ctx context.Context,
-	req request.Request,
-	statusCode int,
-	requestID string,
-	duration time.Duration,
-	err error,
-) {
-	if c.hook == nil {
-		return
-	}
-	c.hook.OnResponse(observability.Event{
-		Context:    ctx,
-		Operation:  req.Operation,
-		Platform:   req.Platform,
-		StatusCode: statusCode,
-		RequestID:  requestID,
-		Duration:   duration,
-		Err:        err,
-	})
 }
 
 func retryableRequest(req request.Request) bool {

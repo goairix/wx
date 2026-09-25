@@ -17,6 +17,11 @@ type Client struct {
 
 // NewClient constructs a customer client.
 func NewClient(executor *api.Client) *Client {
+	return NewWithCaller(executor)
+}
+
+// NewWithCaller constructs a domain client with an authenticated caller.
+func NewWithCaller(executor Caller) *Client {
 	return &Client{
 		contacts:   &ContactClient{api: executor},
 		tags:       &TagClient{api: executor},
@@ -41,10 +46,10 @@ func (c *Client) GroupChats() *GroupChatClient {
 	return c.groupChats
 }
 
-type ContactClient struct{ api *api.Client }
-type TagClient struct{ api *api.Client }
-type StrategyClient struct{ api *api.Client }
-type GroupChatClient struct{ api *api.Client }
+type ContactClient struct{ api Caller }
+type TagClient struct{ api Caller }
+type StrategyClient struct{ api Caller }
+type GroupChatClient struct{ api Caller }
 
 func (c *ContactClient) FollowUsers(ctx context.Context) ([]string, error) {
 	var result struct {

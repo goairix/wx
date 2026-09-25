@@ -19,6 +19,11 @@ type Client struct {
 
 // NewClient constructs a contact client.
 func NewClient(executor *api.Client, encodingAESKey ...string) *Client {
+	return NewWithCaller(executor, encodingAESKey...)
+}
+
+// NewWithCaller constructs a domain client with an authenticated caller.
+func NewWithCaller(executor Caller, encodingAESKey ...string) *Client {
 	aesKey := ""
 	if len(encodingAESKey) > 0 {
 		aesKey = encodingAESKey[0]
@@ -56,7 +61,7 @@ func (c *Client) Batch() *BatchClient {
 
 // UserClient manages enterprise members.
 type UserClient struct {
-	api *api.Client
+	api Caller
 }
 
 func (c *UserClient) Create(ctx context.Context, input CreateUserRequest) error {
@@ -80,7 +85,7 @@ func (c *UserClient) Update(ctx context.Context, input UpdateUserRequest) error 
 }
 
 func (c *UserClient) Delete(ctx context.Context, userID string) error {
-	return c.api.Get(
+	return c.api.GetOnce(
 		ctx,
 		"work.contact.user.delete",
 		"cgi-bin/user/delete",
@@ -241,14 +246,20 @@ func (c *UserClient) ListIDs(
 
 // DepartmentClient manages enterprise departments.
 type DepartmentClient struct {
-	api *api.Client
+	api Caller
 }
 
 func (c *DepartmentClient) Create(ctx context.Context, input CreateDepartmentRequest) (int, error) {
 	var result struct {
 		ID int `json:"id"`
 	}
-	err := c.api.Post(ctx, "work.contact.department.create", "cgi-bin/department/create", input, &result)
+	err := c.api.Post(
+		ctx,
+		"work.contact.department.create",
+		"cgi-bin/department/create",
+		input,
+		&result,
+	)
 	return result.ID, err
 }
 
@@ -257,7 +268,7 @@ func (c *DepartmentClient) Update(ctx context.Context, input UpdateDepartmentReq
 }
 
 func (c *DepartmentClient) Delete(ctx context.Context, id int) error {
-	return c.api.Get(
+	return c.api.GetOnce(
 		ctx,
 		"work.contact.department.delete",
 		"cgi-bin/department/delete",
@@ -311,7 +322,7 @@ func (c *DepartmentClient) Get(ctx context.Context, id int) (*DepartmentInfo, er
 
 // TagClient manages enterprise contact tags.
 type TagClient struct {
-	api *api.Client
+	api Caller
 }
 
 func (c *TagClient) Create(ctx context.Context, name string, id int) (int, error) {
@@ -341,7 +352,7 @@ func (c *TagClient) Update(ctx context.Context, id int, name string) error {
 }
 
 func (c *TagClient) Delete(ctx context.Context, id int) error {
-	return c.api.Get(
+	return c.api.GetOnce(
 		ctx,
 		"work.contact.tag.delete",
 		"cgi-bin/tag/delete",
@@ -417,7 +428,7 @@ func (c *TagClient) changeMembers(
 
 // BatchClient manages asynchronous contact import and export jobs.
 type BatchClient struct {
-	api            *api.Client
+	api            Caller
 	encodingAESKey string
 }
 

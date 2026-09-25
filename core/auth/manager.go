@@ -84,7 +84,10 @@ func (m *Manager) Token(ctx context.Context) (Credential, error) {
 		}
 
 		credential, err, retry := waitRefresh(ctx, call)
-		if !retry || ctx.Err() != nil {
+		if contextErr := ctx.Err(); contextErr != nil {
+			return Credential{}, contextErr
+		}
+		if !retry {
 			return credential, err
 		}
 		// The previous refresh used another caller's context. If that caller

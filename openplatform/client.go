@@ -21,20 +21,23 @@ import (
 )
 
 const defaultBaseURL = "https://api.weixin.qq.com"
+const defaultWorkBaseURL = "https://qyapi.weixin.qq.com"
 
 // Client is a WeChat Open Platform component client.
 type Client struct {
-	config        Config
-	transport     *transport.Client
-	cache         cache.Cache
-	component     *component.Client
-	authorizers   *authorizer.Client
-	code          *code.Client
-	templates     *template.Client
-	mu            sync.Mutex
-	credentials   map[string]*authorizerCredential
-	refreshTokens RefreshTokenStore
-	webhook       *openplatformwebhook.Client
+	config            Config
+	transport         *transport.Client
+	workTransport     *transport.Client
+	cache             cache.Cache
+	component         *component.Client
+	authorizers       *authorizer.Client
+	code              *code.Client
+	templates         *template.Client
+	mu                sync.Mutex
+	credentials       map[string]*authorizerCredential
+	refreshTokens     RefreshTokenStore
+	refreshRepository RefreshTokenRepository
+	webhook           *openplatformwebhook.Client
 }
 
 // NewClient constructs an Open Platform client without making network calls.
@@ -61,6 +64,19 @@ func NewClient(config Config, options ...Option) (*Client, error) {
 		baseURL,
 		settings.retry,
 		transport.WithHook(settings.hook),
+		transport.WithObserver(settings.observer),
+		transport.WithLogger(settings.logger),
+	)
+	workBaseURL := settings.workBaseURL
+	if workBaseURL == "" {
+		workBaseURL = defaultWorkBaseURL
+	}
+	workTransport := transport.New(
+		settings.httpClient,
+		workBaseURL,
+		settings.retry,
+		transport.WithHook(settings.hook),
+		transport.WithObserver(settings.observer),
 		transport.WithLogger(settings.logger),
 	)
 	store := settings.cache
@@ -69,11 +85,13 @@ func NewClient(config Config, options ...Option) (*Client, error) {
 	}
 
 	client := &Client{
-		config:        config,
-		transport:     transportClient,
-		cache:         store,
-		credentials:   make(map[string]*authorizerCredential),
-		refreshTokens: settings.refreshTokens,
+		config:            config,
+		transport:         transportClient,
+		workTransport:     workTransport,
+		cache:             store,
+		credentials:       make(map[string]*authorizerCredential),
+		refreshTokens:     settings.refreshTokens,
+		refreshRepository: settings.refreshRepository,
 	}
 	componentIdentity := credentialIdentity("component", config.AppID)
 	ticketIdentity := credentialIdentity("verify-ticket", config.AppID)
@@ -173,10 +191,11 @@ func (c *Client) AuthorizedMiniApp(appID, refreshToken string) (*miniapp.Client,
 	)
 }
 
-// WorkAuthorizer constructs the enterprise authorization domain on the same
-// transport. Its methods still require enterprise suite credentials.
+// WorkAuthorizer constructs the enterprise authorization domain using its own
+// endpoint and the shared HTTP client, retry policy, hook and logger. Its methods
+// still require enterprise suite credentials.
 func (c *Client) WorkAuthorizer() *workauthorizer.Client {
-	return workauthorizer.NewWithTransport(c.transport)
+	return workauthorizer.NewWithTransport(c.workTransport)
 }
 
 func mapValues(key, value string) url.Values {

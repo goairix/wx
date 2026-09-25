@@ -17,6 +17,7 @@ type option struct {
 	httpClient         *http.Client
 	retry              transport.RetryPolicy
 	hook               observability.Hook
+	observer           observability.Observer
 	logger             logging.Logger
 	transport          *transport.Client
 	credentialProvider auth.Provider
@@ -100,5 +101,13 @@ func WithOAuthComponent(componentAppID string, credential auth.Provider) Option 
 			settings.oauthOptions,
 			oauth.WithComponent(componentAppID, credential),
 		)
+	}
+}
+
+// WithObserver configures a context-propagating observer for each HTTP attempt.
+// When a shared transport is supplied, configure its observer on that transport.
+func WithObserver(observer observability.Observer) Option {
+	return func(settings *option) {
+		settings.observer = observer
 	}
 }

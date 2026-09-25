@@ -2,8 +2,6 @@ package authorizer
 
 import (
 	"context"
-
-	"github.com/goairix/wx/v2/miniapp/internal/api"
 )
 
 // Category describes a category available to the authorized miniapp.
@@ -41,7 +39,7 @@ type CategoryItem struct {
 
 // CategoryClient manages miniapp categories.
 type CategoryClient struct {
-	api *api.Client
+	api Caller
 }
 
 // GetAll returns every category available to the account主体 type.

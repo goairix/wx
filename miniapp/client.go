@@ -63,6 +63,7 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 			base,
 			state.retry,
 			transport.WithHook(state.hook),
+			transport.WithObserver(state.observer),
 			transport.WithLogger(state.logger),
 		)
 	}
@@ -114,6 +115,9 @@ func (c *Client) Authorizer() *authorizer.Client {
 	return c.authorizer
 }
 
+// User returns the same domain client as Users.
+//
+// Deprecated: Use Users instead.
 func (c *Client) User() *user.Client {
 	return c.users
 }
@@ -122,6 +126,9 @@ func (c *Client) Users() *user.Client {
 	return c.users
 }
 
+// Message returns the same domain client as Messages.
+//
+// Deprecated: Use Messages instead.
 func (c *Client) Message() *message.Client {
 	return c.messages
 }
@@ -139,6 +146,9 @@ func (c *Client) QRCode() *qrcode.Client {
 	return c.qr
 }
 
+// QrCode returns the same domain client as QRCode.
+//
+// Deprecated: Use QRCode instead.
 func (c *Client) QrCode() *qrcode.Client {
 	return c.qr
 }
@@ -147,6 +157,9 @@ func (c *Client) WXACode() *wxacode.Client {
 	return c.codes
 }
 
+// WxaCode returns the same domain client as WXACode.
+//
+// Deprecated: Use WXACode instead.
 func (c *Client) WxaCode() *wxacode.Client {
 	return c.codes
 }

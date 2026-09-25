@@ -81,6 +81,7 @@ func (c *Client) CodeToVerifyInfo(
 	meta := new(request.ResponseMeta)
 	err := c.transport.Do(ctx, request.Request{
 		Operation: "miniapp.multiterminal.verify",
+		RetryMode: request.RetryNever,
 		Platform:  "miniapp",
 		Method:    http.MethodGet,
 		Path:      "donut/code2verifyinfo",

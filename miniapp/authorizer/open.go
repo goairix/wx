@@ -2,13 +2,11 @@ package authorizer
 
 import (
 	"context"
-
-	"github.com/goairix/wx/v2/miniapp/internal/api"
 )
 
 // OpenClient manages Open Platform account bindings.
 type OpenClient struct {
-	api *api.Client
+	api Caller
 }
 
 // Create creates an Open Platform account and binds appID to it.

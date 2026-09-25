@@ -11,13 +11,18 @@ import (
 
 // Client provides enterprise identity APIs.
 type Client struct {
-	api     *api.Client
+	api     Caller
 	corpID  string
 	agentID int64
 }
 
 // NewClient constructs an identity client.
 func NewClient(executor *api.Client, corpID string, agentID int64) *Client {
+	return NewWithCaller(executor, corpID, agentID)
+}
+
+// NewWithCaller constructs a domain client with an authenticated caller.
+func NewWithCaller(executor Caller, corpID string, agentID int64) *Client {
 	return &Client{
 		api:     executor,
 		corpID:  corpID,
@@ -46,7 +51,7 @@ func (c *Client) AuthorizationURL(redirectURL, scope, state string) string {
 // UserFromCode exchanges an OAuth code for an enterprise identity.
 func (c *Client) UserFromCode(ctx context.Context, code string) (*UserIdentity, error) {
 	result := new(UserIdentity)
-	err := c.api.Get(
+	err := c.api.GetOnce(
 		ctx,
 		"work.auth.user_from_code",
 		"cgi-bin/auth/getuserinfo",
@@ -88,7 +93,7 @@ func (c *Client) TFAInfo(ctx context.Context, code string) (*TfaInfo, error) {
 
 // ConfirmLoginTFA confirms login two-factor authentication.
 func (c *Client) ConfirmLoginTFA(ctx context.Context, userID string) error {
-	return c.api.Get(
+	return c.api.GetOnce(
 		ctx,
 		"work.auth.tfa.login_success",
 		"cgi-bin/user/authsucc",

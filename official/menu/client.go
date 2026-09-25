@@ -41,11 +41,16 @@ type List struct {
 
 // Client provides official account menu APIs.
 type Client struct {
-	api *api.Client
+	api Caller
 }
 
 // NewClient constructs a menu client.
 func NewClient(executor *api.Client) *Client {
+	return NewWithCaller(executor)
+}
+
+// NewWithCaller constructs a domain client with an authenticated caller.
+func NewWithCaller(executor Caller) *Client {
 	return &Client{api: executor}
 }
 
@@ -62,7 +67,7 @@ func (c *Client) Create(ctx context.Context, items []Item) error {
 
 // Delete removes the default menu.
 func (c *Client) Delete(ctx context.Context) error {
-	return c.api.Get(ctx, "official.menu.delete", "cgi-bin/menu/delete", nil, nil)
+	return c.api.GetOnce(ctx, "official.menu.delete", "cgi-bin/menu/delete", nil, nil)
 }
 
 // Info returns the current default and conditional menus.

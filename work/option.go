@@ -15,6 +15,7 @@ type option struct {
 	httpClient *http.Client
 	retry      transport.RetryPolicy
 	hook       observability.Hook
+	observer   observability.Observer
 	logger     logging.Logger
 }
 
@@ -29,6 +30,8 @@ func WithCache(value corecache.Cache) Option {
 }
 
 // WithCoreCache is an alias for WithCache.
+//
+// Deprecated: Use WithCache instead.
 func WithCoreCache(value corecache.Cache) Option {
 	return WithCache(value)
 }
@@ -65,5 +68,13 @@ func WithHook(value observability.Hook) Option {
 func WithLogger(logger logging.Logger) Option {
 	return func(settings *option) {
 		settings.logger = logger
+	}
+}
+
+// WithObserver configures a context-propagating observer for each HTTP attempt.
+// When a shared transport is supplied, configure its observer on that transport.
+func WithObserver(observer observability.Observer) Option {
+	return func(settings *option) {
+		settings.observer = observer
 	}
 }

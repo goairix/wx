@@ -18,6 +18,7 @@ type option struct {
 	transport          *transport.Client
 	retry              transport.RetryPolicy
 	hook               observability.Hook
+	observer           observability.Observer
 	logger             logging.Logger
 	cache              cache.Cache
 	credentialManager  *auth.Manager
@@ -106,11 +107,15 @@ func WithCredentialProvider(value auth.Provider) Option {
 }
 
 // WithAccessTokenProvider is an alias for WithCredentialProvider.
+//
+// Deprecated: Use WithCredentialProvider instead.
 func WithAccessTokenProvider(value auth.Provider) Option {
 	return WithCredentialProvider(value)
 }
 
 // WithTokenProvider is an alias for WithCredentialProvider.
+//
+// Deprecated: Use WithCredentialProvider instead.
 func WithTokenProvider(value auth.Provider) Option {
 	return WithCredentialProvider(value)
 }
@@ -151,5 +156,13 @@ func WithRequestID(requestID func() string) Option {
 		if requestID != nil {
 			settings.requestID = requestID
 		}
+	}
+}
+
+// WithObserver configures a context-propagating observer for each HTTP attempt.
+// When a shared transport is supplied, configure its observer on that transport.
+func WithObserver(observer observability.Observer) Option {
+	return func(settings *option) {
+		settings.observer = observer
 	}
 }

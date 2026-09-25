@@ -3,21 +3,25 @@ package message
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"net/url"
 
 	"github.com/goairix/wx/v2/core/auth"
 	wxerrors "github.com/goairix/wx/v2/core/errors"
 	"github.com/goairix/wx/v2/core/request"
+	"github.com/goairix/wx/v2/miniapp/internal/api"
 )
 
-type Client struct {
-	transport request.Caller
-	auth      *auth.Manager
+// Client provides authenticated miniapp domain operations.
+type Client struct{ api Caller }
+
+// New constructs a domain client using the shared authenticated executor.
+func New(tr request.Caller, a *auth.Manager) *Client {
+	return NewWithCaller(api.New(tr, a))
 }
 
-func New(tr request.Caller, a *auth.Manager) *Client {
-	return &Client{transport: tr, auth: a}
+// NewWithCaller constructs a domain client with an authenticated caller.
+func NewWithCaller(caller Caller) *Client {
+	return &Client{api: caller}
 }
 
 type Message struct {
@@ -66,62 +70,13 @@ type KeywordEnumValue struct {
 	KeywordCode   string   `json:"keywordCode"`
 }
 
-type apiEnvelope struct {
-	ErrCode int    `json:"errcode"`
-	ErrMsg  string `json:"errmsg"`
-}
-
-func (e apiEnvelope) platformError() (int, string) {
-	return e.ErrCode, e.ErrMsg
-}
-
-func (c *Client) do(ctx context.Context, method, op, path string, q url.Values, body, result interface{}) error {
-	cred, err := c.auth.Token(ctx)
-	if err != nil {
-		return err
-	}
-	meta := &request.ResponseMeta{}
-	if q == nil {
-		q = url.Values{}
-	}
-	q.Set("access_token", cred.AccessToken)
-	err = c.transport.Do(ctx, request.Request{
-		Operation: op,
-		Platform:  "miniapp",
-		Method:    method,
-		Path:      path,
-		Query:     q,
-		Body:      body,
-		Result:    result,
-		Meta:      meta,
-	})
-	if err != nil {
-		return err
-	}
-	if e, ok := result.(interface{ platformError() (int, string) }); ok {
-		code, message := e.platformError()
-		if code != 0 {
-			return &wxerrors.Error{
-				Platform:   "miniapp",
-				Operation:  op,
-				HTTPStatus: meta.StatusCode,
-				Code:       fmt.Sprint(code),
-				Message:    message,
-				RequestID:  meta.RequestID,
-			}
-		}
-	}
-	return nil
-}
-
 func (c *Client) GetCategory(ctx context.Context) ([]Category, error) {
 	var out struct {
-		apiEnvelope
 		Data []Category `json:"data"`
 	}
-	if err := c.do(
-		ctx, http.MethodGet, "miniapp.message.category",
-		"wxaapi/newtmpl/getcategory", nil, nil, &out,
+	if err := c.api.Get(
+		ctx, "miniapp.message.category",
+		"wxaapi/newtmpl/getcategory", nil, &out,
 	); err != nil {
 		return nil, err
 	}
@@ -130,21 +85,23 @@ func (c *Client) GetCategory(ctx context.Context) ([]Category, error) {
 
 func (c *Client) GetKeywords(ctx context.Context, tid string) ([]Keyword, error) {
 	var out struct {
-		apiEnvelope
 		Data []Keyword `json:"data"`
 	}
-	if err := c.do(
-		ctx, http.MethodGet, "miniapp.message.keywords",
-		"wxaapi/newtmpl/getpubtemplatekeywords", url.Values{"tid": {tid}}, nil, &out,
+	if err := c.api.Get(
+		ctx, "miniapp.message.keywords",
+		"wxaapi/newtmpl/getpubtemplatekeywords", url.Values{"tid": {tid}}, &out,
 	); err != nil {
 		return nil, err
 	}
 	return out.Data, nil
 }
 
-func (c *Client) GetPublicTemplates(ctx context.Context, ids string, start, limit int) ([]PublicTemplate, error) {
+func (c *Client) GetPublicTemplates(
+	ctx context.Context,
+	ids string,
+	start, limit int,
+) ([]PublicTemplate, error) {
 	var out struct {
-		apiEnvelope
 		Data []PublicTemplate `json:"data"`
 	}
 	query := url.Values{
@@ -152,9 +109,9 @@ func (c *Client) GetPublicTemplates(ctx context.Context, ids string, start, limi
 		"start": {fmt.Sprint(start)},
 		"limit": {fmt.Sprint(limit)},
 	}
-	if err := c.do(
-		ctx, http.MethodGet, "miniapp.message.public_templates",
-		"wxaapi/newtmpl/getpubtemplatetitles", query, nil, &out,
+	if err := c.api.Get(
+		ctx, "miniapp.message.public_templates",
+		"wxaapi/newtmpl/getpubtemplatetitles", query, &out,
 	); err != nil {
 		return nil, err
 	}
@@ -163,21 +120,24 @@ func (c *Client) GetPublicTemplates(ctx context.Context, ids string, start, limi
 
 func (c *Client) GetTemplateList(ctx context.Context) ([]PrivateTemplate, error) {
 	var out struct {
-		apiEnvelope
 		Data []PrivateTemplate `json:"data"`
 	}
-	if err := c.do(
-		ctx, http.MethodGet, "miniapp.message.templates",
-		"wxaapi/newtmpl/gettemplate", nil, nil, &out,
+	if err := c.api.Get(
+		ctx, "miniapp.message.templates",
+		"wxaapi/newtmpl/gettemplate", nil, &out,
 	); err != nil {
 		return nil, err
 	}
 	return out.Data, nil
 }
 
-func (c *Client) AddTemplate(ctx context.Context, tid string, kidList []int, sceneDesc string) (string, error) {
+func (c *Client) AddTemplate(
+	ctx context.Context,
+	tid string,
+	kidList []int,
+	sceneDesc string,
+) (string, error) {
 	var out struct {
-		apiEnvelope
 		ID string `json:"priTmplId"`
 	}
 	body := map[string]interface{}{
@@ -185,9 +145,9 @@ func (c *Client) AddTemplate(ctx context.Context, tid string, kidList []int, sce
 		"kidList":   kidList,
 		"sceneDesc": sceneDesc,
 	}
-	if err := c.do(
-		ctx, http.MethodPost, "miniapp.message.add_template",
-		"wxaapi/newtmpl/addtemplate", nil, body, &out,
+	if err := c.api.Post(
+		ctx, "miniapp.message.add_template",
+		"wxaapi/newtmpl/addtemplate", body, &out,
 	); err != nil {
 		return "", err
 	}
@@ -195,10 +155,10 @@ func (c *Client) AddTemplate(ctx context.Context, tid string, kidList []int, sce
 }
 
 func (c *Client) DeleteTemplate(ctx context.Context, id string) error {
-	var out apiEnvelope
-	return c.do(
-		ctx, http.MethodPost, "miniapp.message.delete_template",
-		"wxaapi/newtmpl/deltemplate", nil, map[string]string{"priTmplId": id}, &out,
+	var out struct{}
+	return c.api.Post(
+		ctx, "miniapp.message.delete_template",
+		"wxaapi/newtmpl/deltemplate", map[string]string{"priTmplId": id}, &out,
 	)
 }
 
@@ -212,9 +172,9 @@ func (c *Client) Send(ctx context.Context, m Message) error {
 	if m.Lang == "" {
 		m.Lang = "zh_CN"
 	}
-	var out apiEnvelope
-	return c.do(
-		ctx, http.MethodPost, "miniapp.message.send",
-		"cgi-bin/message/subscribe/send", nil, m, &out,
+	var out struct{}
+	return c.api.Post(
+		ctx, "miniapp.message.send",
+		"cgi-bin/message/subscribe/send", m, &out,
 	)
 }
