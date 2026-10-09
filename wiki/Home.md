@@ -335,6 +335,8 @@ client, err := official.NewClient(official.Config{
 | `client.Users()` | 用户资料、备注、关注列表、黑名单和标签 |
 | `client.Menu()` | 自定义菜单 |
 | `client.TemplateMessages()` | 行业、模板和模板消息 |
+| `client.CustomerService()` | [客服消息、账号管理、会话及聊天记录](../official/customer/README.md) |
+| `client.Materials()` | [临时与永久素材上传、获取、列表、统计及删除](../official/material/README.md) |
 | `client.QRCode()` | 临时和永久带参数二维码 |
 | `client.JSSDK()` | `jsapi_ticket` 缓存和页面签名 |
 | `client.Authorizer()` | 公众号与开放平台账号绑定 |

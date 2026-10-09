@@ -9,8 +9,10 @@ import (
 	"github.com/goairix/wx/v2/core/transport"
 	"github.com/goairix/wx/v2/official/article"
 	"github.com/goairix/wx/v2/official/authorizer"
+	"github.com/goairix/wx/v2/official/customer"
 	"github.com/goairix/wx/v2/official/internal/api"
 	"github.com/goairix/wx/v2/official/jssdk"
+	"github.com/goairix/wx/v2/official/material"
 	"github.com/goairix/wx/v2/official/menu"
 	"github.com/goairix/wx/v2/official/message"
 	"github.com/goairix/wx/v2/official/oauth"
@@ -28,6 +30,8 @@ type Client struct {
 	auth       *auth.Manager
 	article    *article.Client
 	authorizer *authorizer.Client
+	customer   *customer.Client
+	materials  *material.Client
 	menu       *menu.Client
 	messages   *message.Client
 	oauth      *oauth.Client
@@ -88,6 +92,8 @@ func NewClient(config Config, opts ...Option) (*Client, error) {
 	executor := api.New(tr, client.auth)
 	client.article = article.NewClient()
 	client.authorizer = authorizer.NewClient(executor)
+	client.customer = customer.NewWithCaller(executor)
+	client.materials = material.NewWithCaller(executor)
 	client.menu = menu.NewClient(executor)
 	client.messages = message.NewClient(executor)
 	client.oauth = oauth.NewClient(
@@ -155,4 +161,14 @@ func (c *Client) Webhook() *officialwebhook.Client {
 // Config returns a copy of the client configuration.
 func (c *Client) Config() Config {
 	return c.config
+}
+
+// CustomerService returns account, message and session customer service APIs.
+func (c *Client) CustomerService() *customer.Client {
+	return c.customer
+}
+
+// Materials returns temporary and permanent material management APIs.
+func (c *Client) Materials() *material.Client {
+	return c.materials
 }

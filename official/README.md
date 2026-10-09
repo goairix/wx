@@ -31,6 +31,8 @@ info, err := client.Users().Info(ctx, "openid")
 | `client.Users()` | 用户资料、标签、黑名单 |
 | `client.Menu()` | 自定义菜单 |
 | `client.TemplateMessages()` | 模板消息 |
+| `client.CustomerService()` | [客服消息、账号管理、会话与聊天记录](customer/README.md) |
+| `client.Materials()` | [临时与永久素材上传、获取、列表、统计与删除](material/README.md) |
 | `client.QRCode()` | 带参数二维码 |
 | `client.JSSDK()` | JS SDK ticket 和签名配置 |
 | `client.Authorizer()` | 开放平台授权账号信息 |

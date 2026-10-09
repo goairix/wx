@@ -2,12 +2,14 @@
 package transport
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -265,11 +267,32 @@ func (c *Client) doAttempt(
 		*req.Meta = meta
 	}
 	success := response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices
-	if req.ResponseWriter != nil && success && !strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "json") {
-		_, outcome.event.Err = io.Copy(req.ResponseWriter, response.Body)
-		return
+	if req.ResponseWriter != nil && success {
+		// Explicit attachments are file contents, even when they contain JSON
+		// fields such as errcode. Preserve their bytes and streaming semantics.
+		disposition, _, dispositionErr := mime.ParseMediaType(response.Header.Get("Content-Disposition"))
+		if dispositionErr == nil && disposition == "attachment" {
+			_, outcome.event.Err = io.Copy(req.ResponseWriter, response.Body)
+			return
+		}
 	}
-	responseBody, err := readAllLimited(response.Body, c.maxResponseBytes)
+	responseReader := io.Reader(response.Body)
+	if req.ResponseWriter != nil && success && !strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "json") {
+		// WeChat may label JSON errors text/plain or application/octet-stream.
+		// Detect JSON syntax rather than field order or literal key spelling.
+		// Media files still stream; JSON-like responses use the buffer limit.
+		reader, looksLikeJSON, sniffErr := sniffJSONResponse(response.Body, c.maxResponseBytes)
+		if sniffErr != nil {
+			outcome.event.Err = sniffErr
+			return
+		}
+		if !looksLikeJSON {
+			_, outcome.event.Err = io.Copy(req.ResponseWriter, reader)
+			return
+		}
+		responseReader = reader
+	}
+	responseBody, err := readAllLimited(responseReader, c.maxResponseBytes)
 	if err != nil {
 		outcome.event.Err = err
 		return
@@ -281,6 +304,29 @@ func (c *Client) doAttempt(
 	}
 	outcome.event.Err = decodeResponse(req, responseBody, meta)
 	return
+}
+
+// sniffJSONResponse preserves all consumed bytes and bounds leading whitespace
+// while looking for a JSON object/array, independent of the declared MIME type.
+func sniffJSONResponse(body io.Reader, limit int64) (io.Reader, bool, error) {
+	reader := bufio.NewReader(body)
+	var prefix bytes.Buffer
+	for {
+		value, err := reader.ReadByte()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return io.MultiReader(&prefix, reader), false, nil
+			}
+			return nil, false, err
+		}
+		prefix.WriteByte(value)
+		if value != ' ' && value != '\n' && value != '\r' && value != '\t' {
+			return io.MultiReader(&prefix, reader), value == '{' || value == '[', nil
+		}
+		if limit >= 0 && int64(prefix.Len()) > limit {
+			return nil, false, ErrResponseTooLarge
+		}
+	}
 }
 
 func decodeResponse(req request.Request, body []byte, meta request.ResponseMeta) error {

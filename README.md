@@ -25,7 +25,7 @@ SDK 以平台根客户端为入口，按业务领域组织接口，并提供统�
 
 | 平台 | 包 | 主要能力 |
 | --- | --- | --- |
-| 微信公众号 | [`official`](official/) | OAuth、用户、标签、菜单、模板消息、二维码、JS SDK、回调 |
+| 微信公众号 | [`official`](official/) | OAuth、用户、标签、菜单、模板消息、客服消息与管理、素材、二维码、JS SDK、回调 |
 | 微信小程序 | [`miniapp`](miniapp/) | 登录、用户、订阅消息、小程序码、内容安全、多端能力、回调 |
 | 微信移动应用 | [`mobileapp`](mobileapp/) | OAuth 登录、access token 刷新和用户信息 |
 | 微信开放平台 | [`openplatform`](openplatform/) | 组件凭据、账号授权、代码模板、授权方客户端、回调 |

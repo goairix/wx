@@ -20,7 +20,10 @@ transport 默认不输出日志。`WithLogger` 接收 `core/logging.Logger`，�
 
 缓冲响应默认上限为 32 MiB，超过上限返回 `transport.ErrResponseTooLarge`。设置负数
 可关闭缓冲上限。使用 `request.ResponseWriter` 的二进制响应直接流式写出，不受缓冲
-上限影响。
+上限影响。HTTP 成功且 `Content-Disposition` 为 `attachment` 的响应始终作为文件流式写出，
+即使内容是 JSON 或包含 `errcode` 字段，也不解析文件内容。其他 JSON 响应会先缓冲并检查平台错误；即使 Content-Type 不是 JSON，
+以 JSON 对象或数组开头的响应也采用这一处理，受缓冲上限约束。识别时保留原始字节，
+并限制 JSON 前导空白的缓冲大小。
 
 重试同时受全局 `RetryPolicy` 和单次请求控制：GET、HEAD、OPTIONS、PUT、DELETE
 默认允许重试；POST 默认不重试。确认请求可以安全重复后，可设置
