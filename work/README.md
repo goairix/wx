@@ -52,8 +52,10 @@ client, err := work.NewClient(
 | `client.MiniApp()` | 企业小程序登录 |
 | `client.Authorizer()` | 第三方企业授权 |
 | `client.Webhook()` | 回调验证、解密和事件分发 |
+| [`aibot.New(...)`](aibot/README.md) | 独立 Bot ID / Secret 智能机器人长连接、流式回复、卡片和媒体 |
 
-领域包之间互不依赖。它们只使用 `core` 和 `work/internal/api` 提供的公共能力。
+领域包之间互不依赖。HTTP 领域使用 `core` 和 `work/internal/api` 的公共能力。
+智能机器人长连接以 [`work/aibot`](aibot/README.md) 独立创建，不需要企业应用 access_token。
 
 ## 应用管理
 
