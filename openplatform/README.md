@@ -202,6 +202,11 @@ miniappClient, err := client.AuthorizedMiniApp(
 )
 ```
 
+授权公众号的业务接口返回 `40001` 或 `42001` 时，会失效本次使用的授权方 access token，
+通过同一凭据管理器加载并使用当前 authorizer refresh token，最多重试业务操作一次。
+刷新、仓库读取和轮换 token 保存始终使用该业务调用的原始 context，因此 context 中的
+租约和版本校验信息、截止时间与取消信号都会保留。持久化失败直接返回错误，停止重放。
+
 企业微信第三方授权 API 默认请求 `https://qyapi.weixin.qq.com`，suite access token 仍由调用方按接口要求传入：
 
 ```go

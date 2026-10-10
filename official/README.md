@@ -68,6 +68,12 @@ user, err := client.OAuth().UserFromCode(ctx, code)
 
 ## 错误处理
 
+使用服务端 access token 的接口返回 `40001` 或 `42001` 时，SDK 会作废本次使用的
+旧 token，复用凭据管理器刷新，并最多重试当前操作一次。消息、素材上传、缓冲下载和
+流式下载都使用此策略；流式下载一旦尝试向目标写入，就不会重放。其他错误直接返回。
+重试使用原始 context，授权公众号也会通过现有的 authorizer refresh token 流程刷新。
+此策略不适用于网页 OAuth 用户 token。
+
 平台错误统一返回 `*core/errors.Error`：
 
 ```go

@@ -47,39 +47,20 @@ func (c *Client) do(
 	result interface{},
 	retryMode request.RetryMode,
 ) error {
-	credential, err := c.auth.Token(ctx)
-	if err != nil {
-		return err
-	}
-	if query == nil {
-		query = make(url.Values)
-	}
-	query.Set("access_token", credential.AccessToken)
-
-	meta := new(request.ResponseMeta)
-	envelope := wechat.Response{
-		Platform:  platform,
-		Operation: operation,
-		Value:     result,
-	}
-	err = c.transport.Do(ctx, request.Request{
-		Operation: operation,
-		Platform:  platform,
-		Method:    method,
-		Path:      path,
-		Query:     query,
-		Body:      body,
-		Header: http.Header{
-			"Authorization": []string{"Bearer " + credential.AccessToken},
-		},
-		Result:    &envelope,
-		Meta:      meta,
-		RetryMode: retryMode,
+	return wechat.DoWithToken(ctx, c.auth, platform, operation, func(credential auth.Credential) (bool, error) {
+		meta := new(request.ResponseMeta)
+		envelope := wechat.Response{Platform: platform, Operation: operation, Value: result}
+		err := c.transport.Do(ctx, request.Request{
+			Operation: operation, Platform: platform, Method: method, Path: path,
+			Query: wechat.TokenQuery(query, credential.AccessToken), Body: body,
+			Header: http.Header{"Authorization": {"Bearer " + credential.AccessToken}},
+			Result: &envelope, Meta: meta, RetryMode: retryMode,
+		})
+		if err == nil {
+			err = envelope.Error(*meta)
+		}
+		return true, err
 	})
-	if err != nil {
-		return err
-	}
-	return envelope.Error(*meta)
 }
 
 // Get executes an authenticated GET request.

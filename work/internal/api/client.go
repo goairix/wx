@@ -2,14 +2,11 @@
 package api
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 
 	"github.com/goairix/wx/v2/core/auth"
 	wxerrors "github.com/goairix/wx/v2/core/errors"
@@ -56,36 +53,19 @@ func (c *Client) do(
 	result interface{},
 	retryMode request.RetryMode,
 ) error {
-	credential, err := c.auth.Token(ctx)
-	if err != nil {
-		return err
-	}
-	if query == nil {
-		query = make(url.Values)
-	}
-	query.Set("access_token", credential.AccessToken)
-
-	meta := new(request.ResponseMeta)
-	envelope := wechat.Response{
-		Platform:  platform,
-		Operation: operation,
-		Value:     result,
-	}
-	err = c.transport.Do(ctx, request.Request{
-		Operation: operation,
-		Platform:  platform,
-		Method:    method,
-		Path:      path,
-		Query:     query,
-		Body:      body,
-		Result:    &envelope,
-		RetryMode: retryMode,
-		Meta:      meta,
+	return wechat.DoWithToken(ctx, c.auth, platform, operation, func(credential auth.Credential) (bool, error) {
+		meta := new(request.ResponseMeta)
+		envelope := wechat.Response{Platform: platform, Operation: operation, Value: result}
+		err := c.transport.Do(ctx, request.Request{
+			Operation: operation, Platform: platform, Method: method, Path: path,
+			Query: wechat.TokenQuery(query, credential.AccessToken), Body: body,
+			Result: &envelope, RetryMode: retryMode, Meta: meta,
+		})
+		if err == nil {
+			err = envelope.Error(*meta)
+		}
+		return true, err
 	})
-	if err != nil {
-		return err
-	}
-	return envelope.Error(*meta)
 }
 
 // Get executes an authenticated GET request.
@@ -120,45 +100,25 @@ func (c *Client) Raw(
 	header http.Header,
 	body []byte,
 ) ([]byte, *request.ResponseMeta, error) {
-	credential, err := c.auth.Token(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-	if query == nil {
-		query = make(url.Values)
-	}
-	query.Set("access_token", credential.AccessToken)
-	result := make([]byte, 0)
-	meta := new(request.ResponseMeta)
-	err = c.transport.Do(ctx, request.Request{
-		Operation: operation,
-		Platform:  platform,
-		Method:    method,
-		Path:      path,
-		Query:     query,
-		Header:    header,
-		Body:      body,
-		Result:    &result,
-		Meta:      meta,
+	var result []byte
+	var meta *request.ResponseMeta
+	err := wechat.DoWithToken(ctx, c.auth, platform, operation, func(credential auth.Credential) (bool, error) {
+		result = nil
+		meta = new(request.ResponseMeta)
+		err := c.transport.Do(ctx, request.Request{
+			Operation: operation, Platform: platform, Method: method, Path: path,
+			Query: wechat.TokenQuery(query, credential.AccessToken), Header: header.Clone(),
+			Body: body, Result: &result, Meta: meta,
+		})
+		if err == nil {
+			if platformErr := wxerrors.ParseResponseError(platform, operation, meta.StatusCode, result, meta.RequestID); platformErr != nil {
+				err = platformErr
+			}
+		}
+		return true, err
 	})
 	if err != nil {
 		return nil, meta, err
-	}
-	if looksLikeJSON(meta.Header.Get("Content-Type"), result) {
-		var fields struct {
-			ErrCode int    `json:"errcode"`
-			ErrMsg  string `json:"errmsg"`
-		}
-		if json.Unmarshal(result, &fields) == nil && fields.ErrCode != 0 {
-			return nil, meta, &wxerrors.Error{
-				Platform:   platform,
-				Operation:  operation,
-				HTTPStatus: meta.StatusCode,
-				Code:       strconv.Itoa(fields.ErrCode),
-				Message:    fields.ErrMsg,
-				RequestID:  meta.RequestID,
-			}
-		}
 	}
 	return result, meta, nil
 }
@@ -174,32 +134,21 @@ func (c *Client) RawTo(
 	body []byte,
 	destination io.Writer,
 ) (*request.ResponseMeta, error) {
-	credential, err := c.auth.Token(ctx)
-	if err != nil {
-		return nil, err
+	if destination == nil {
+		return nil, fmt.Errorf("work: download destination is required")
 	}
-	if query == nil {
-		query = make(url.Values)
-	}
-	query.Set("access_token", credential.AccessToken)
-	meta := new(request.ResponseMeta)
-	err = c.transport.Do(ctx, request.Request{
-		Operation:      operation,
-		Platform:       platform,
-		Method:         method,
-		Path:           path,
-		Query:          query,
-		Header:         header,
-		Body:           body,
-		ResponseWriter: destination,
-		Meta:           meta,
+	var meta *request.ResponseMeta
+	err := wechat.DoWithToken(ctx, c.auth, platform, operation, func(credential auth.Credential) (bool, error) {
+		tracker := &wechat.WriteTracker{Destination: destination}
+		meta = new(request.ResponseMeta)
+		err := c.transport.Do(ctx, request.Request{
+			Operation: operation, Platform: platform, Method: method, Path: path,
+			Query: wechat.TokenQuery(query, credential.AccessToken), Header: header.Clone(),
+			Body: body, ResponseWriter: tracker, Meta: meta,
+		})
+		return !tracker.Started, err
 	})
 	return meta, err
-}
-
-func looksLikeJSON(contentType string, data []byte) bool {
-	return bytes.Contains([]byte(contentType), []byte("json")) ||
-		len(bytes.TrimSpace(data)) > 0 && bytes.TrimSpace(data)[0] == '{'
 }
 
 func (c *Client) String() string {

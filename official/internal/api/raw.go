@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/goairix/wx/v2/core/auth"
 	wxerrors "github.com/goairix/wx/v2/core/errors"
 	"github.com/goairix/wx/v2/core/request"
+	"github.com/goairix/wx/v2/internal/wechat"
 )
 
 // Raw executes an authenticated request and returns JSON or binary response bytes.
@@ -17,10 +19,6 @@ func (c *Client) Raw(ctx context.Context, operation, method, path string, query 
 	meta, err := c.raw(ctx, operation, method, path, query, header, body, &data, nil)
 	if err != nil {
 		return nil, meta, err
-	}
-	// Custom request callers may return raw bytes without decoding platform errors.
-	if platformErr := wxerrors.ParseResponseError(platform, operation, meta.StatusCode, data, meta.RequestID); platformErr != nil {
-		return nil, meta, platformErr
 	}
 	return data, meta, nil
 }
@@ -35,25 +33,36 @@ func (c *Client) RawTo(ctx context.Context, operation, method, path string, quer
 }
 
 func (c *Client) raw(ctx context.Context, operation, method, path string, query url.Values, header http.Header, body, result interface{}, destination io.Writer) (*request.ResponseMeta, error) {
-	credential, err := c.auth.Token(ctx)
-	if err != nil {
-		return nil, err
-	}
-	queryCopy := make(url.Values, len(query)+1)
-	for key, values := range query {
-		queryCopy[key] = append([]string(nil), values...)
-	}
-	queryCopy.Set("access_token", credential.AccessToken)
-	header = header.Clone()
-	if header == nil {
-		header = make(http.Header)
-	}
-	header.Set("Authorization", "Bearer "+credential.AccessToken)
-	meta := new(request.ResponseMeta)
-	err = c.transport.Do(ctx, request.Request{
-		Operation: operation, Platform: platform, Method: method, Path: path,
-		Query: queryCopy, Header: header, Body: body, Result: result,
-		ResponseWriter: destination, Meta: meta,
+	var meta *request.ResponseMeta
+	err := wechat.DoWithToken(ctx, c.auth, platform, operation, func(credential auth.Credential) (bool, error) {
+		attemptHeader := header.Clone()
+		if attemptHeader == nil {
+			attemptHeader = make(http.Header)
+		}
+		attemptHeader.Set("Authorization", "Bearer "+credential.AccessToken)
+		var tracker *wechat.WriteTracker
+		var writer io.Writer
+		if destination != nil {
+			tracker = &wechat.WriteTracker{Destination: destination}
+			writer = tracker
+		}
+		data, buffered := result.(*[]byte)
+		if buffered {
+			*data = nil
+		}
+		meta = new(request.ResponseMeta)
+		err := c.transport.Do(ctx, request.Request{
+			Operation: operation, Platform: platform, Method: method, Path: path,
+			Query: wechat.TokenQuery(query, credential.AccessToken), Header: attemptHeader,
+			Body: body, Result: result, ResponseWriter: writer, Meta: meta,
+		})
+		// Custom callers may return bytes without decoding platform errors.
+		if err == nil && buffered {
+			if platformErr := wxerrors.ParseResponseError(platform, operation, meta.StatusCode, *data, meta.RequestID); platformErr != nil {
+				err = platformErr
+			}
+		}
+		return tracker == nil || !tracker.Started, err
 	})
 	return meta, err
 }

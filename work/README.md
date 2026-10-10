@@ -76,6 +76,8 @@ err = client.Agent().CreateMenu(ctx, 1000005, []agent.MenuButton{
 
 `agent` 的导入路径是 `github.com/goairix/wx/v2/work/agent`。
 应用 ID 显式传给管理方法，不会自动使用 `Config.AgentID`。
+验证应用配置时，可调用 `client.Agent().Get(ctx, config.AgentID)`，由企业微信校验当前
+`CorpSecret` 对应的凭据是否有权访问该应用；构造客户端本身不会完成远程验证。
 设置请求的可选字段使用指针：`nil` 表示不传，非 nil 指针可明确传入 `0` 或空字符串；
 具体字段允许的值由企业微信校验。工作台完整示例见[应用管理文档](agent/README.md)。
 
@@ -168,6 +170,11 @@ handler := client.Webhook().Handler(
 ```
 
 ## 错误处理
+
+接口返回 `40014` 或 `42001` 时，SDK 会作废本次使用的旧 token，复用凭据管理器
+刷新，并最多重试当前操作一次。消息、素材上传、缓冲下载和流式下载都使用此策略；
+流式下载一旦尝试向目标写入，就不会重放。`40001` 表示 Secret 不合法，会直接返回，
+不会触发 token 恢复。凭据获取、失效、刷新和重试均沿用调用方的原始 context。
 
 企业微信 API 错误统一返回 v2 自有的 `*core/errors.Error`，错误码保留为字符串：
 
