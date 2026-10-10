@@ -17,6 +17,7 @@ import (
 	"github.com/goairix/wx/v2/core/request"
 	"github.com/goairix/wx/v2/core/transport"
 	"github.com/goairix/wx/v2/work/accountid"
+	"github.com/goairix/wx/v2/work/agent"
 	workauth "github.com/goairix/wx/v2/work/auth"
 	"github.com/goairix/wx/v2/work/authorizer"
 	"github.com/goairix/wx/v2/work/contact"
@@ -37,6 +38,7 @@ type Client struct {
 	transport  *transport.Client
 	auth       *auth.Manager
 	login      *workauth.Client
+	agent      *agent.Client
 	contact    *contact.Client
 	customer   *customer.Client
 	message    *message.Client
@@ -88,6 +90,7 @@ func NewClient(config Config, options ...Option) (*Client, error) {
 		auth.ProviderFunc(client.fetchToken),
 	)
 	executor := api.New(transportClient, client.auth)
+	client.agent = agent.NewClient(executor)
 	client.login = workauth.NewClient(executor, config.CorpID, config.AgentID)
 	client.contact = contact.NewClient(executor, config.EncodingAESKey)
 	client.customer = customer.NewClient(executor)
@@ -152,6 +155,11 @@ func (c *Client) Config() Config {
 
 func (c *Client) Auth() *workauth.Client {
 	return c.login
+}
+
+// Agent returns application settings, custom menus, and workbench operations.
+func (c *Client) Agent() *agent.Client {
+	return c.agent
 }
 
 func (c *Client) Contact() *contact.Client {

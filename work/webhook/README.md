@@ -14,3 +14,7 @@ handler := client.Webhook().Handler(webhook.HandlerFunc(func(
 `Event` 提供 `ContactChange`、`ExternalContactChange`、`GroupChatChange`、
 `ExternalTagChange`、`TemplateCard`、`LivingStatusChange` 和 `Approval` 等 typed 入口。
 安全模式请求返回非空 body 时，适配器会自动加密响应。
+
+工作台自定义模式切换通过 `event.Event == "switch_workbench_mode"` 识别。
+`event.WorkbenchModeSwitch()` 返回对应事件，`AgentID` 标识应用，
+`Mode` 为 `1` 表示启用、`0` 表示停用。

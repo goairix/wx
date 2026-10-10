@@ -42,6 +42,7 @@ client, err := work.NewClient(
 | 入口 | 能力 |
 | --- | --- |
 | `client.Auth()` | OAuth 登录、扫码登录 |
+| `client.Agent()` | 应用详情与设置、自定义菜单、工作台展示 |
 | `client.Contact()` | 成员、部门、标签、批量导入导出 |
 | `client.Customer()` | 外部联系人、客户标签、策略、客户群 |
 | `client.Message()` | 应用消息和应用群聊 |
@@ -53,6 +54,30 @@ client, err := work.NewClient(
 | `client.Webhook()` | 回调验证、解密和事件分发 |
 
 领域包之间互不依赖。它们只使用 `core` 和 `work/internal/api` 提供的公共能力。
+
+## 应用管理
+
+```go
+detail, err := client.Agent().Get(ctx, 1000005)
+applications, err := client.Agent().List(ctx)
+
+name := "HR助手"
+disabled := 0
+err = client.Agent().Set(ctx, agent.SetRequest{
+    AgentID:       1000005,
+    Name:          &name,
+    IsReportEnter: &disabled,
+})
+
+err = client.Agent().CreateMenu(ctx, 1000005, []agent.MenuButton{
+    {Type: "view", Name: "服务", URL: "https://example.com"},
+})
+```
+
+`agent` 的导入路径是 `github.com/goairix/wx/v2/work/agent`。
+应用 ID 显式传给管理方法，不会自动使用 `Config.AgentID`。
+设置请求的可选字段使用指针：`nil` 表示不传，非 nil 指针可明确传入 `0` 或空字符串；
+具体字段允许的值由企业微信校验。工作台完整示例见[应用管理文档](agent/README.md)。
 
 ## 通讯录
 

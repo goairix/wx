@@ -31,6 +31,7 @@ type Event struct {
 
 	Event          string          `xml:"Event" json:"Event"`
 	EventKey       string          `xml:"EventKey" json:"EventKey"`
+	Mode           int             `xml:"Mode" json:"Mode"`
 	ChangeType     string          `xml:"ChangeType" json:"ChangeType"`
 	SuiteID        string          `xml:"SuiteId" json:"SuiteId"`
 	SuiteTicket    string          `xml:"SuiteTicket" json:"SuiteTicket"`
@@ -190,6 +191,10 @@ type LivingStatusChangeEvent struct {
 // ApprovalEvent represents approval status changes.
 type ApprovalEvent struct{ Event }
 
+// WorkbenchModeSwitchEvent represents changes to custom workbench display.
+// Mode is 1 when enabled and 0 when disabled.
+type WorkbenchModeSwitchEvent struct{ Event }
+
 // SuiteTicket returns the event as a suite ticket event.
 func (e Event) SuiteTicketEvent() SuiteTicketEvent { return SuiteTicketEvent{Event: e} }
 
@@ -228,3 +233,8 @@ func (e Event) LivingStatusChange() LivingStatusChangeEvent {
 
 // Approval returns the event as an approval event.
 func (e Event) Approval() ApprovalEvent { return ApprovalEvent{Event: e} }
+
+// WorkbenchModeSwitch returns the event as a workbench display change.
+func (e Event) WorkbenchModeSwitch() WorkbenchModeSwitchEvent {
+	return WorkbenchModeSwitchEvent{Event: e}
+}
