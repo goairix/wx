@@ -1,5 +1,7 @@
 # work/aibot 实施计划
 
+> 历史计划：已由 [消息接入计划](2026-10-10-work-aibot-messaging.md) 与 [文档 MCP 计划](2026-10-10-work-aibot-documents.md) 替代。
+
 Goal: 按完整用户范围提供企微智能机器人长连接 SDK。
 Architecture: 独立机器人客户端，连接代际隔离 ACK、有界异步通知、每回复/流串行化，媒体走独立 HTTP 和 WebSocket 请求协调器。
 Tech Stack: Go 1.23、core/logging、core/errors、coder/websocket、标准库 HTTP/AES。

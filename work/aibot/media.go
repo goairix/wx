@@ -4,10 +4,9 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/md5" // #nosec G501 -- required by the WeCom upload protocol.
+	"crypto/md5"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,179 +15,79 @@ import (
 	"net/http"
 	"net/url"
 	"path"
-	"strconv"
 	"strings"
 	"unicode"
-	"unicode/utf8"
 
 	coreerrors "github.com/goairix/wx/v2/core/errors"
+	"github.com/goairix/wx/v2/work/aibot/internal/settings"
 )
 
-// UploadResult identifies temporary media, valid for three days.
-// CreatedAt preserves either the string or integer timestamp used by WeCom.
-type UploadResult struct {
-	Type      string `json:"type"`
-	MediaID   string `json:"media_id"`
-	CreatedAt string `json:"created_at"`
-}
-
-// UnmarshalJSON accepts both documented timestamp representations.
-func (r *UploadResult) UnmarshalJSON(data []byte) error {
-	var wire struct {
-		Type      string          `json:"type"`
-		MediaID   string          `json:"media_id"`
-		CreatedAt json.RawMessage `json:"created_at"`
-	}
-	if err := json.Unmarshal(data, &wire); err != nil {
-		return err
-	}
-	var created string
-	if len(wire.CreatedAt) > 0 && string(wire.CreatedAt) != "null" {
-		if wire.CreatedAt[0] == '"' {
-			if err := json.Unmarshal(wire.CreatedAt, &created); err != nil {
-				return err
-			}
-		} else {
-			created = string(wire.CreatedAt)
-			stamp, err := strconv.ParseInt(created, 10, 64)
-			if err != nil || stamp < 0 {
-				return errors.New("invalid media creation timestamp")
-			}
-		}
-	}
-	*r = UploadResult{Type: wire.Type, MediaID: wire.MediaID, CreatedAt: created}
-	return nil
-}
-
-// DownloadedMedia contains decrypted bytes and a filename safe for a basename.
-// The caller chooses where to store the data.
+type MediaSource struct{ URL, AESKey string }
 type DownloadedMedia struct {
-	Data     []byte
-	Filename string
+	Data                  []byte
+	Filename, ContentType string
 }
+type MediaClient struct{ shared settings.Settings }
 
-// UploadMedia uploads media through init, sequential chunks, and finish ACKs.
-// It never retries a request whose delivery may be unknown. Data is buffered
-// within the configured and platform limits to compute the required MD5.
-// Context is checked between reader calls; a blocking reader must arrange its
-// own cancellation, as io.Reader has no context-aware interruption mechanism.
-func (c *Client) UploadMedia(ctx context.Context, mediaType, filename string, data io.Reader) (UploadResult, error) {
-	const operation = "upload_media"
-	fail := func(cause error) (UploadResult, error) { return UploadResult{}, operationError(operation, "", cause) }
-	if ctx == nil || data == nil || filename == "" || len(filename) > 256 || !utf8.ValidString(filename) {
-		return fail(ErrInvalidArgument)
-	}
-	var platformLimit int64
-	switch mediaType {
-	case "image", "video":
-		platformLimit = 10 << 20
-	case "voice":
-		platformLimit = 2 << 20
-	case "file":
-		platformLimit = 20 << 20
-	default:
-		return fail(ErrInvalidArgument)
-	}
-	limit := min(c.options.uploadLimit, platformLimit, int64(c.options.chunkSize)*100)
-	content, err := readMedia(ctx, data, limit)
+func NewMedia(opts ...Option) (*MediaClient, error) {
+	s, err := settings.Resolve(opts...)
 	if err != nil {
-		return fail(err)
+		return nil, WrapError("media.new", "", ErrInvalidArgument)
 	}
-	if len(content) < 5 {
-		return fail(ErrInvalidArgument)
-	}
-	digest := md5.Sum(content) // #nosec G401 -- checksum required by the protocol.
-	totalChunks := (len(content) + c.options.chunkSize - 1) / c.options.chunkSize
-	init, err := c.request(ctx, CmdUploadInit, "", struct {
-		Type     string `json:"type"`
-		Filename string `json:"filename"`
-		Size     int    `json:"total_size"`
-		Chunks   int    `json:"total_chunks"`
-		MD5      string `json:"md5"`
-	}{mediaType, filename, len(content), totalChunks, hex.EncodeToString(digest[:])})
-	if err != nil {
-		return UploadResult{}, err
-	}
-	var session struct {
-		ID string `json:"upload_id"`
-	}
-	if decodeErr := json.Unmarshal(init.Body, &session); decodeErr != nil {
-		return UploadResult{}, operationError(operation, init.Headers.ReqID, fmt.Errorf("invalid upload initialization: %w", errors.Join(ErrProtocol, decodeErr)))
-	}
-	if strings.TrimSpace(session.ID) == "" {
-		return UploadResult{}, operationError(operation, init.Headers.ReqID, fmt.Errorf("%w: missing upload ID", ErrProtocol))
-	}
-	for index := 0; index < totalChunks; index++ {
-		start := index * c.options.chunkSize
-		end := min(start+c.options.chunkSize, len(content))
-		_, chunkErr := c.request(ctx, CmdUploadChunk, "", struct {
-			ID    string `json:"upload_id"`
-			Index int    `json:"chunk_index"`
-			Data  string `json:"base64_data"`
-		}{session.ID, index, base64.StdEncoding.EncodeToString(content[start:end])})
-		if chunkErr != nil {
-			return UploadResult{}, chunkErr
-		}
-	}
-	finish, err := c.request(ctx, CmdUploadFinish, "", struct {
-		ID string `json:"upload_id"`
-	}{session.ID})
-	if err != nil {
-		return UploadResult{}, err
-	}
-	var result UploadResult
-	if err := json.Unmarshal(finish.Body, &result); err != nil {
-		return UploadResult{}, operationError(operation, finish.Headers.ReqID, fmt.Errorf("invalid upload result: %w", errors.Join(ErrProtocol, err)))
-	}
-	if result.Type != mediaType || strings.TrimSpace(result.MediaID) == "" || strings.TrimSpace(result.CreatedAt) == "" {
-		return UploadResult{}, operationError(operation, finish.Headers.ReqID, fmt.Errorf("%w: incomplete upload result", ErrProtocol))
-	}
-	return result, nil
+	return &MediaClient{shared: s}, nil
 }
-
-// DownloadMedia fetches a media URL using ctx and decrypts its raw contents.
-// Download limits apply to both ciphertext and plaintext. URLs and AES keys
-// are omitted from outward error messages; causes remain available via Unwrap.
-func (c *Client) DownloadMedia(ctx context.Context, mediaURL, aesKey string) (DownloadedMedia, error) {
-	const operation = "download_media"
-	fail := func(cause error) (DownloadedMedia, error) {
-		return DownloadedMedia{}, operationError(operation, "", cause)
+func (c *MediaClient) Download(ctx context.Context, source MediaSource) (*DownloadedMedia, error) {
+	if source.AESKey == "" {
+		return nil, WrapError("media.download", "", ErrInvalidArgument)
 	}
+	return c.download(ctx, source.URL, source.AESKey, false)
+}
+func (c *MediaClient) DownloadRaw(ctx context.Context, url string) (*DownloadedMedia, error) {
+	return c.download(ctx, url, "", true)
+}
+func (c *MediaClient) download(ctx context.Context, mediaURL, aesKey string, raw bool) (*DownloadedMedia, error) {
 	if ctx == nil {
-		return fail(ErrInvalidArgument)
+		return nil, WrapError("media.download", "", ErrInvalidArgument)
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, mediaURL, nil)
+	bound, cancel := context.WithTimeout(ctx, c.shared.RequestTimeout)
+	defer cancel()
+	request, err := http.NewRequestWithContext(bound, http.MethodGet, mediaURL, nil)
 	if err != nil {
-		return fail(err)
+		return nil, WrapError("media.download", "", err)
 	}
-	if request.URL.Scheme != "http" && request.URL.Scheme != "https" {
-		return fail(ErrInvalidArgument)
+	if request.URL.Host == "" || request.URL.User != nil || (request.URL.Scheme != "http" && request.URL.Scheme != "https") {
+		return nil, WrapError("media.download", "", ErrInvalidArgument)
 	}
-	response, err := c.options.httpClient.Do(request)
+	response, err := c.shared.HTTPClient.Do(request)
 	if err != nil {
-		return fail(err)
+		if response != nil && response.Body != nil {
+			_ = response.Body.Close()
+		}
+		return nil, WrapError("media.download", "", err)
 	}
 	defer func() { _ = response.Body.Close() }()
+	fail := func(cause error) (*DownloadedMedia, error) {
+		return nil, &coreerrors.Error{Platform: "work", Operation: "work.aibot.media.download", HTTPStatus: response.StatusCode, Message: "media download failed", Err: cause}
+	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return DownloadedMedia{}, &coreerrors.Error{Platform: "work", Operation: "aibot." + operation, HTTPStatus: response.StatusCode, Message: "media download failed", Err: fmt.Errorf("unexpected media HTTP status %d", response.StatusCode)}
+		return fail(fmt.Errorf("unexpected HTTP status %d", response.StatusCode))
 	}
-	if response.ContentLength > c.options.downloadLimit {
-		return fail(errors.New("media exceeds download limit"))
+	if response.ContentLength > c.shared.MaxDownloadBytes {
+		return fail(ErrBodyTooLarge)
 	}
-	encrypted, err := readMedia(ctx, response.Body, c.options.downloadLimit)
+	data, err := readMedia(bound, response.Body, c.shared.MaxDownloadBytes)
 	if err != nil {
 		return fail(err)
 	}
-	data, err := DecryptMedia(encrypted, aesKey)
-	if err != nil {
-		return fail(err)
-	}
-	if int64(len(data)) > c.options.downloadLimit {
-		return fail(errors.New("media exceeds download limit"))
+	if !raw {
+		data, err = DecryptMedia(data, aesKey)
+		if err != nil {
+			return fail(err)
+		}
 	}
 	filename := ""
-	if _, parameters, err := mime.ParseMediaType(response.Header.Get("Content-Disposition")); err == nil {
-		filename = safeMediaFilename(parameters["filename"])
+	if _, p, err := mime.ParseMediaType(response.Header.Get("Content-Disposition")); err == nil {
+		filename = safeMediaFilename(p["filename"])
 	}
 	if filename == "" {
 		filename = safeMediaFilename(request.URL.Path)
@@ -196,14 +95,21 @@ func (c *Client) DownloadMedia(ctx context.Context, mediaURL, aesKey string) (Do
 	if filename == "" {
 		filename = "media"
 	}
-	return DownloadedMedia{Data: data, Filename: filename}, nil
+	return &DownloadedMedia{Data: data, Filename: filename, ContentType: response.Header.Get("Content-Type")}, nil
+}
+func NewStreamImage(data []byte) (StreamImage, error) {
+	if len(data) > 10<<20 || !isImage(data) {
+		return StreamImage{}, ErrInvalidArgument
+	}
+	digest := md5.Sum(data)
+	return StreamImage{Base64: base64.StdEncoding.EncodeToString(data), MD5: hex.EncodeToString(digest[:])}, nil
 }
 
 // DecryptMedia decrypts raw AES-256-CBC media with key[:16] as IV and
 // validates every PKCS#7 padding byte (padding values 1 through 32).
 // This is distinct from the enterprise callback envelope format.
 func DecryptMedia(data []byte, aesKey string) ([]byte, error) {
-	fail := func(cause error) ([]byte, error) { return nil, operationError("decrypt_media", "", cause) }
+	fail := func(cause error) ([]byte, error) { return nil, WrapError("decrypt_media", "", cause) }
 	key, err := base64.StdEncoding.Strict().DecodeString(aesKey)
 	if err != nil && !strings.Contains(aesKey, "=") {
 		key, err = base64.RawStdEncoding.Strict().DecodeString(aesKey)
@@ -265,7 +171,7 @@ func readMedia(ctx context.Context, reader io.Reader, limit int64) ([]byte, erro
 		return nil, err
 	}
 	if int64(len(data)) > limit {
-		return nil, errors.New("media exceeds size limit")
+		return nil, ErrBodyTooLarge
 	}
 	return data, nil
 }

@@ -1,10 +1,5 @@
-// Package aibot implements the enterprise intelligent-bot WebSocket protocol.
-//
-// Bot credentials are independent of enterprise application access tokens.
-// Connect authenticates and starts the lifecycle; its context stays in effect
-// across reconnects. Drain Notifications continuously and dispatch business
-// work separately. Close permanently ends the client and outstanding requests.
-// Outbound messages are never replayed automatically after connection loss.
-//
-// The caller owns replica leases, deduplication, sessions, and agent execution.
+// Package aibot provides shared intelligent-bot message, card and media models.
+// Use websocket, webhook or documents for independently configured transports.
+// Constructors do not perform network I/O. The application owns replica leases,
+// deduplication, agent execution, stream snapshots and document authorization.
 package aibot

@@ -29,10 +29,7 @@ const wechatPKCS7BlockSize = 32
 // DecryptMessage decrypts a WeChat encrypted message. encodingAESKey is the
 // unpadded base64 key supplied by the platform and receiverID is the expected
 // account or enterprise identifier.
-func DecryptMessage(encodingAESKey, encrypted, receiverID string) ([]byte, error) {
-	if receiverID == "" {
-		return nil, ErrInvalidReceiver
-	}
+func decryptMessage(encodingAESKey, encrypted, receiverID string) ([]byte, error) {
 	key, err := decodeAESKey(encodingAESKey)
 	if err != nil {
 		return nil, err
@@ -68,21 +65,18 @@ func DecryptMessage(encodingAESKey, encrypted, receiverID string) ([]byte, error
 	}
 	message := plain[start:receiverStart]
 	receiver := plain[receiverStart:]
-	if receiverID != "" && string(receiver) != receiverID {
+	if string(receiver) != receiverID {
 		return nil, ErrInvalidReceiver
 	}
 	return append([]byte(nil), message...), nil
 }
 
 // EncryptMessage encrypts a WeChat callback response for receiverID.
-func EncryptMessage(
+func encryptMessage(
 	encodingAESKey string,
 	message []byte,
 	receiverID string,
 ) (string, error) {
-	if receiverID == "" {
-		return "", ErrInvalidReceiver
-	}
 	key, err := decodeAESKey(encodingAESKey)
 	if err != nil {
 		return "", err
@@ -145,4 +139,44 @@ func unpad(data []byte, blockSize int) ([]byte, error) {
 		return nil, ErrInvalidPadding
 	}
 	return data[:len(data)-padding], nil
+}
+
+// CipherConfig explicitly chooses the expected receiver, including bot empty receivers.
+type CipherConfig struct {
+	EncodingAESKey, ReceiverID string
+	AllowEmptyReceiver         bool
+}
+type MessageCipher struct{ key, receiver string }
+
+func NewMessageCipher(cfg CipherConfig) (*MessageCipher, error) {
+	if cfg.ReceiverID == "" && !cfg.AllowEmptyReceiver {
+		return nil, ErrInvalidReceiver
+	}
+	if _, err := decodeAESKey(cfg.EncodingAESKey); err != nil {
+		return nil, err
+	}
+	return &MessageCipher{key: cfg.EncodingAESKey, receiver: cfg.ReceiverID}, nil
+}
+func (c *MessageCipher) Encrypt(message []byte) (string, error) {
+	if uint64(len(message)) > uint64(^uint32(0)) {
+		return "", ErrMalformedPayload
+	}
+	return encryptMessage(c.key, message, c.receiver)
+}
+func (c *MessageCipher) Decrypt(encrypted string) ([]byte, error) {
+	return decryptMessage(c.key, encrypted, c.receiver)
+}
+func EncryptMessage(key string, message []byte, receiver string) (string, error) {
+	c, err := NewMessageCipher(CipherConfig{EncodingAESKey: key, ReceiverID: receiver})
+	if err != nil {
+		return "", err
+	}
+	return c.Encrypt(message)
+}
+func DecryptMessage(key, encrypted, receiver string) ([]byte, error) {
+	c, err := NewMessageCipher(CipherConfig{EncodingAESKey: key, ReceiverID: receiver})
+	if err != nil {
+		return nil, err
+	}
+	return c.Decrypt(encrypted)
 }

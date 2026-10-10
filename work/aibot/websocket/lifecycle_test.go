@@ -1,4 +1,4 @@
-package aibot
+package websocket
 
 import (
 	"context"
@@ -35,9 +35,9 @@ func TestRepliesSerializeUntilACK(t *testing.T) {
 	c, s := newTestClient(t)
 	one := make(chan error, 1)
 	two := make(chan error, 1)
-	go func() { _, err := c.ReplyMarkdown(context.Background(), "r", "first"); one <- err }()
+	go func() { _, err := c.replyMarkdown(context.Background(), "r", "first"); one <- err }()
 	first := s.next(t)
-	go func() { _, err := c.ReplyMarkdown(context.Background(), "r", "second"); two <- err }()
+	go func() { _, err := c.replyMarkdown(context.Background(), "r", "second"); two <- err }()
 	select {
 	case b := <-s.writes:
 		t.Fatalf("second sent before firstACK %s", b)
@@ -63,13 +63,13 @@ func TestRepliesSerializeUntilACK(t *testing.T) {
 func TestCanceledQueuedRequestPreservesOperationAndRequestID(t *testing.T) {
 	c, s := newTestClient(t)
 	done := make(chan error, 1)
-	go func() { _, err := c.ReplyMarkdown(context.Background(), "r", "first"); done <- err }()
+	go func() { _, err := c.replyMarkdown(context.Background(), "r", "first"); done <- err }()
 	s.next(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
-	_, err := c.ReplyMarkdown(ctx, "r", "second")
+	_, err := c.replyMarkdown(ctx, "r", "second")
 	var apiErr *coreerrors.Error
-	if !errors.Is(err, context.DeadlineExceeded) || !errors.As(err, &apiErr) || apiErr.RequestID != "r" || apiErr.Operation != "aibot.aibot_respond_msg" {
+	if !errors.Is(err, context.DeadlineExceeded) || !errors.As(err, &apiErr) || apiErr.RequestID != "r" || apiErr.Operation != "work.aibot.websocket.aibot_respond_msg" {
 		t.Fatalf("lost context: %+v", apiErr)
 	}
 	s.ack("r", 0, nil)
@@ -83,9 +83,9 @@ func TestCanceledQueuedRequestPreservesOperationAndRequestID(t *testing.T) {
 	}
 }
 func TestACKTimeoutDisconnectsBeforeReusedID(t *testing.T) {
-	c, s := newTestClient(t, WithRequestTimeout(20*time.Millisecond), WithReconnectPolicy(ReconnectPolicy{InitialDelay: time.Millisecond, MaxDelay: time.Millisecond, MaxAttempts: 0}))
+	c, s := newTestClient(t, withRequestTimeout(20*time.Millisecond), withReconnectPolicy(ReconnectPolicy{InitialDelay: time.Millisecond, MaxDelay: time.Millisecond, MaxAttempts: 0}))
 	result := make(chan error, 1)
-	go func() { _, err := c.ReplyMarkdown(context.Background(), "r", "first"); result <- err }()
+	go func() { _, err := c.replyMarkdown(context.Background(), "r", "first"); result <- err }()
 	s.next(t)
 	err := <-result
 	if !errors.Is(err, context.DeadlineExceeded) {
@@ -96,7 +96,7 @@ func TestACKTimeoutDisconnectsBeforeReusedID(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("late ACK ambiguity not isolated")
 	}
-	_, err = c.ReplyMarkdown(context.Background(), "r", "second")
+	_, err = c.replyMarkdown(context.Background(), "r", "second")
 	if err == nil {
 		t.Fatal("sent after timeout")
 	}
@@ -109,12 +109,12 @@ func TestACKTimeoutDisconnectsBeforeReusedID(t *testing.T) {
 func TestReconnectResubscribesWithoutReplay(t *testing.T) {
 	first, second := newTestConnection(), newTestConnection()
 	var calls atomic.Int32
-	c, err := New(Config{BotID: "bot", Secret: "secret"}, WithDialer(DialerFunc(func(context.Context, string) (Connection, error) {
+	c, err := newClient(Config{BotID: "bot", Secret: "secret"}, withDialer(DialerFunc(func(context.Context, string) (Connection, error) {
 		if calls.Add(1) == 1 {
 			return first, nil
 		}
 		return second, nil
-	})), WithHeartbeat(time.Hour, time.Second), WithReconnectPolicy(ReconnectPolicy{InitialDelay: time.Millisecond, MaxDelay: time.Millisecond, MaxAttempts: 2}))
+	})), withHeartbeat(time.Hour, time.Second), withReconnectPolicy(ReconnectPolicy{InitialDelay: time.Millisecond, MaxDelay: time.Millisecond, MaxAttempts: 2}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestReconnectResubscribesWithoutReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	pending := make(chan error, 1)
-	go func() { _, err := c.ReplyMarkdown(context.Background(), "uncertain", "message"); pending <- err }()
+	go func() { _, err := c.replyMarkdown(context.Background(), "uncertain", "message"); pending <- err }()
 	first.next(t)
 	first.drop()
 	if err := <-pending; !errors.Is(err, ErrDisconnected) {
@@ -168,7 +168,7 @@ func TestReplacementStopsReconnectAndPreservesEvent(t *testing.T) {
 	}
 }
 func TestHeartbeatNeedsMatchingACK(t *testing.T) {
-	c, s := newTestClient(t, WithHeartbeat(5*time.Millisecond, 15*time.Millisecond), WithReconnectPolicy(ReconnectPolicy{InitialDelay: time.Millisecond, MaxDelay: time.Millisecond, MaxAttempts: 0}))
+	c, s := newTestClient(t, withHeartbeat(5*time.Millisecond, 15*time.Millisecond), withReconnectPolicy(ReconnectPolicy{InitialDelay: time.Millisecond, MaxDelay: time.Millisecond, MaxAttempts: 0}))
 	ping := s.next(t)
 	if ping.Command != CmdPing || len(ping.Body) != 0 {
 		t.Fatal(ping)
@@ -181,7 +181,7 @@ func TestHeartbeatNeedsMatchingACK(t *testing.T) {
 	}
 }
 func TestNotificationOverflowTerminatesExplicitly(t *testing.T) {
-	c, s := newTestClient(t, WithNotificationBuffer(4)) // three lifecycle notifications already queued
+	c, s := newTestClient(t, withNotificationBuffer(4)) // three lifecycle notifications already queued
 	s.push(`{"cmd":"aibot_msg_callback","headers":{"req_id":"1"},"body":{"msgtype":"text","text":{"content":"one"}}}`)
 	s.push(`{"cmd":"aibot_msg_callback","headers":{"req_id":"2"},"body":{"msgtype":"text","text":{"content":"two"}}}`)
 	waitState(t, c, StateClosed)
@@ -197,9 +197,9 @@ func TestErrorCodeAndLogRedaction(t *testing.T) {
 		defer mu.Unlock()
 		logs = append(logs, fmt.Sprint(event, attrs))
 	})
-	c, s := newTestClient(t, WithLogger(logger))
+	c, s := newTestClient(t, withLogger(logger))
 	done := make(chan error, 1)
-	go func() { _, err := c.ReplyMarkdown(context.Background(), "r", "SECRET_CONTENT"); done <- err }()
+	go func() { _, err := c.replyMarkdown(context.Background(), "r", "SECRET_CONTENT"); done <- err }()
 	s.next(t)
 	s.ack("r", 40014, nil)
 	err := <-done
@@ -207,7 +207,7 @@ func TestErrorCodeAndLogRedaction(t *testing.T) {
 	if !errors.As(err, &e) || e.Code != "40014" || e.RequestID != "r" {
 		t.Fatal(err)
 	}
-	_, _ = c.DownloadMedia(context.Background(), ":signed?SECRET_DOWNLOAD", "SECRET_AES")
+	_, _ = c.downloadMedia(context.Background(), ":signed?SECRET_DOWNLOAD", "SECRET_AES")
 	_ = c.Close()
 	mu.Lock()
 	defer mu.Unlock()
@@ -221,7 +221,7 @@ func TestErrorCodeAndLogRedaction(t *testing.T) {
 }
 
 func TestDisconnectCancelsQueuedStreamBeforeLockRelease(t *testing.T) {
-	c, s := newTestClient(t, WithReconnectPolicy(ReconnectPolicy{InitialDelay: time.Second, MaxDelay: time.Second, MaxAttempts: 1}))
+	c, s := newTestClient(t, withReconnectPolicy(ReconnectPolicy{InitialDelay: time.Second, MaxDelay: time.Second, MaxAttempts: 1}))
 	locked, release := make(chan struct{}), make(chan struct{})
 	defer close(release)
 	go func() {
@@ -230,7 +230,7 @@ func TestDisconnectCancelsQueuedStreamBeforeLockRelease(t *testing.T) {
 	<-locked
 	result := make(chan error, 1)
 	go func() {
-		_, err := c.ReplyStream(context.Background(), "queued-reply", Stream{ID: "queued", Content: "unsent"})
+		_, err := c.replyStream(context.Background(), "queued-reply", Stream{ID: "queued", Content: "unsent"})
 		result <- err
 	}()
 	deadline := time.After(time.Second)
@@ -289,7 +289,7 @@ func TestWriteFailurePreservesSessionAndUnderlyingCauses(t *testing.T) {
 			base := newTestConnection()
 			writeErr := errors.New("write failed")
 			conn := &writeFailureConnection{testConnection: base, failure: writeErr, writing: make(chan struct{}), waitForCancel: closeDuringWrite}
-			c, err := New(Config{BotID: "bot", Secret: "secret"}, WithDialer(DialerFunc(func(context.Context, string) (Connection, error) { return conn, nil })), WithHeartbeat(time.Hour, time.Second), WithReconnectPolicy(ReconnectPolicy{InitialDelay: time.Second, MaxDelay: time.Second, MaxAttempts: 0}))
+			c, err := newClient(Config{BotID: "bot", Secret: "secret"}, withDialer(DialerFunc(func(context.Context, string) (Connection, error) { return conn, nil })), withHeartbeat(time.Hour, time.Second), withReconnectPolicy(ReconnectPolicy{InitialDelay: time.Second, MaxDelay: time.Second, MaxAttempts: 0}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -303,7 +303,7 @@ func TestWriteFailurePreservesSessionAndUnderlyingCauses(t *testing.T) {
 			}
 			result := make(chan error, 1)
 			go func() {
-				_, requestErr := c.ReplyMarkdown(context.Background(), "failed-write", "content")
+				_, requestErr := c.replyMarkdown(context.Background(), "failed-write", "content")
 				result <- requestErr
 			}()
 			<-conn.writing
@@ -327,7 +327,7 @@ func TestWriteFailurePreservesSessionAndUnderlyingCauses(t *testing.T) {
 func TestReadyNotificationOverflowCannotReportSuccessfulConnect(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		s := newTestConnection()
-		c, err := New(Config{BotID: "bot", Secret: "secret"}, WithNotificationBuffer(2), WithDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })))
+		c, err := newClient(Config{BotID: "bot", Secret: "secret"}, withNotificationBuffer(2), withDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -344,7 +344,7 @@ func TestReadyNotificationOverflowCannotReportSuccessfulConnect(t *testing.T) {
 }
 
 func TestReconnectNotificationOverflowStopsBeforeBackoff(t *testing.T) {
-	c, s := newTestClient(t, WithNotificationBuffer(4), WithReconnectPolicy(ReconnectPolicy{InitialDelay: time.Hour, MaxDelay: time.Hour, MaxAttempts: 1}))
+	c, s := newTestClient(t, withNotificationBuffer(4), withReconnectPolicy(ReconnectPolicy{InitialDelay: time.Hour, MaxDelay: time.Hour, MaxAttempts: 1}))
 	s.drop()
 	select {
 	case <-c.done:
@@ -357,7 +357,7 @@ func TestReconnectNotificationOverflowStopsBeforeBackoff(t *testing.T) {
 }
 
 func TestRejectedHeartbeatRetainsCodeAndRequestID(t *testing.T) {
-	c, s := newTestClient(t, WithHeartbeat(5*time.Millisecond, time.Second), WithReconnectPolicy(ReconnectPolicy{InitialDelay: time.Second, MaxDelay: time.Second, MaxAttempts: 0}))
+	c, s := newTestClient(t, withHeartbeat(5*time.Millisecond, time.Second), withReconnectPolicy(ReconnectPolicy{InitialDelay: time.Second, MaxDelay: time.Second, MaxAttempts: 0}))
 	ping := s.next(t)
 	s.ack(ping.Headers.ReqID, 40014, nil)
 	waitState(t, c, StateClosed)

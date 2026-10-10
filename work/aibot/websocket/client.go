@@ -1,4 +1,4 @@
-package aibot
+package websocket
 
 import (
 	"context"
@@ -26,12 +26,13 @@ const (
 // Notification carries a state transition, a callback, or a connection error.
 // Exactly one consumer should drain Notifications and dispatch business work.
 type Notification struct {
-	State   State
-	Frame   Frame
-	Message *Message
-	Event   *EventMessage
-	Err     error
-	Attempt int
+	State    State
+	Frame    Frame
+	Message  *Message
+	Event    *EventMessage
+	Err      error
+	Attempt  int
+	Callback *ReceivedCallback
 }
 type keyLock struct {
 	token chan struct{}
@@ -55,7 +56,7 @@ type Client struct {
 	keys                      map[string]*keyLock
 }
 
-func New(config Config, opts ...Option) (*Client, error) {
+func newClient(config Config, opts ...option) (*Client, error) {
 	o := defaultOptions()
 	for _, opt := range opts {
 		if opt != nil {
@@ -346,7 +347,12 @@ func (s *session) readLoop() {
 				s.fail(errors.Join(ErrProtocol, err))
 				return
 			}
-			if !s.queueCallback(Notification{Frame: frame, Message: &m}) {
+			target, err := s.received(frame)
+			if err != nil {
+				s.fail(err)
+				return
+			}
+			if !s.queueCallback(Notification{Frame: frame, Message: &m, Callback: target}) {
 				return
 			}
 		case CmdEventCallback:
@@ -361,7 +367,12 @@ func (s *session) readLoop() {
 				s.fail(ErrReplaced)
 				return
 			}
-			if !s.queueCallback(Notification{Frame: frame, Event: &e}) {
+			target, err := s.received(frame)
+			if err != nil {
+				s.fail(err)
+				return
+			}
+			if !s.queueCallback(Notification{Frame: frame, Event: &e, Callback: target}) {
 				return
 			}
 		default:

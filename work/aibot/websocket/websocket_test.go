@@ -1,4 +1,4 @@
-package aibot
+package websocket
 
 import (
 	"context"
@@ -49,7 +49,7 @@ func TestDefaultDialerAuthenticatesAndReceivesRealWebSocket(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	c, err := New(Config{BotID: "wire-bot", Secret: "wire-secret"}, WithWebSocketURL("ws"+strings.TrimPrefix(server.URL, "http")), WithHTTPClient(server.Client()), WithHeartbeat(time.Hour, time.Second))
+	c, err := newClient(Config{BotID: "wire-bot", Secret: "wire-secret"}, withWebSocketURL("ws"+strings.TrimPrefix(server.URL, "http")), withHTTPClient(server.Client()), withHeartbeat(time.Hour, time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestDefaultDialerAuthenticatesAndReceivesRealWebSocket(t *testing.T) {
 		}
 	}
 reply:
-	if _, err := c.ReplyMarkdown(ctx, "wire-callback", "response"); err != nil {
+	if _, err := c.replyMarkdown(ctx, "wire-callback", "response"); err != nil {
 		t.Fatal(err)
 	}
 	message := <-received
@@ -88,7 +88,7 @@ reply:
 	}
 }
 func TestDialRespectsRequestTimeout(t *testing.T) {
-	c, err := New(Config{BotID: "bot", Secret: "secret"}, WithRequestTimeout(15*time.Millisecond), WithDialer(DialerFunc(func(ctx context.Context, _ string) (Connection, error) { <-ctx.Done(); return nil, ctx.Err() })))
+	c, err := newClient(Config{BotID: "bot", Secret: "secret"}, withRequestTimeout(15*time.Millisecond), withDialer(DialerFunc(func(ctx context.Context, _ string) (Connection, error) { <-ctx.Done(); return nil, ctx.Err() })))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestDialRespectsRequestTimeout(t *testing.T) {
 }
 func TestCloseCancelsSubscribeAndCannotRestart(t *testing.T) {
 	s := newTestConnection()
-	c, err := New(Config{BotID: "bot", Secret: "secret"}, WithDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })))
+	c, err := newClient(Config{BotID: "bot", Secret: "secret"}, withDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestCloseCancelsSubscribeAndCannotRestart(t *testing.T) {
 }
 func TestSubscribeRejectionPreservesRemoteError(t *testing.T) {
 	s := newTestConnection()
-	c, err := New(Config{BotID: "bot", Secret: "secret"}, WithDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })))
+	c, err := newClient(Config{BotID: "bot", Secret: "secret"}, withDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,19 +136,19 @@ func TestSubscribeRejectionPreservesRemoteError(t *testing.T) {
 	s.ack(frame.Headers.ReqID, 401, nil)
 	err = <-done
 	var e *coreerrors.Error
-	if !errors.As(err, &e) || e.Code != "401" || e.RequestID != frame.Headers.ReqID || e.Operation != "aibot.aibot_subscribe" {
+	if !errors.As(err, &e) || e.Code != "401" || e.RequestID != frame.Headers.ReqID || e.Operation != "work.aibot.websocket.aibot_subscribe" {
 		t.Fatalf("%+v", e)
 	}
 	waitState(t, c, StateClosed)
 }
 func TestConfigRejectsInvalidDependenciesAndLimits(t *testing.T) {
-	cases := []Option{WithWebSocketURL("https://example.com"), WithHTTPClient(nil), WithLogger(nil), WithChunkSize(512<<10 + 1), WithMediaLimits(0, 1), WithHeartbeat(0, time.Second), WithRequestTimeout(0), WithNotificationBuffer(0), WithMaxFrameBytes(0), WithReconnectPolicy(ReconnectPolicy{InitialDelay: time.Second, MaxDelay: time.Millisecond})}
+	cases := []option{withWebSocketURL("https://example.com"), withHTTPClient(nil), withLogger(nil), withChunkSize(512<<10 + 1), withMediaLimits(0, 1), withHeartbeat(0, time.Second), withRequestTimeout(0), withNotificationBuffer(0), withMaxFrameBytes(0), withReconnectPolicy(ReconnectPolicy{InitialDelay: time.Second, MaxDelay: time.Millisecond})}
 	for _, option := range cases {
-		if _, err := New(Config{BotID: "bot", Secret: "secret"}, option); !errors.Is(err, ErrInvalidArgument) {
+		if _, err := newClient(Config{BotID: "bot", Secret: "secret"}, option); !errors.Is(err, ErrInvalidArgument) {
 			t.Fatalf("invalidconfiguration accepted: %v", err)
 		}
 	}
-	if _, err := New(Config{}); !errors.Is(err, ErrInvalidArgument) {
+	if _, err := newClient(Config{}); !errors.Is(err, ErrInvalidArgument) {
 		t.Fatal(err)
 	}
 }

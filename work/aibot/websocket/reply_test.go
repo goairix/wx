@@ -1,4 +1,4 @@
-package aibot
+package websocket
 
 import (
 	"context"
@@ -15,54 +15,54 @@ import (
 // Wire fixtures catch wrong command selection, omitted nested fields and accidental
 // normalization of template card extensions.
 func TestReplyWirePayloads(t *testing.T) {
-	card := TemplateCard{"card_type": "button_interaction", "button_selection": map[string]any{"disable": false}, "extension": map[string]any{"custom": "retained"}}
+	card := legacyCard{"card_type": "button_interaction", "button_selection": map[string]any{"disable": false}, "extension": map[string]any{"custom": "retained"}}
 	tests := []struct {
 		name, command, body string
 		active              bool
 		call                func(*Client) (Frame, error)
 	}{
-		{"markdown", "aibot_respond_msg", `{"msgtype":"markdown","markdown":{"content":"**hello**"}}`, false, func(c *Client) (Frame, error) { return c.ReplyMarkdown(context.Background(), "request", "**hello**") }},
+		{"markdown", "aibot_respond_msg", `{"msgtype":"markdown","markdown":{"content":"**hello**"}}`, false, func(c *Client) (Frame, error) { return c.replyMarkdown(context.Background(), "request", "**hello**") }},
 		{"generic", "aibot_respond_msg", `{"msgtype":"markdown","markdown":{"content":"generic"}}`, false, func(c *Client) (Frame, error) {
-			return c.Reply(context.Background(), "request", MessageBody{MsgType: "markdown", Markdown: &TextContent{Content: "generic"}})
+			return c.reply(context.Background(), "request", MessageBody{MsgType: "markdown", Markdown: &TextContent{Content: "generic"}})
 		}},
 		{"empty stream content", "aibot_respond_msg", `{"msgtype":"stream","stream":{"id":"stream","finish":false,"content":""}}`, false, func(c *Client) (Frame, error) {
-			return c.ReplyStream(context.Background(), "request", Stream{ID: "stream"})
+			return c.replyStream(context.Background(), "request", Stream{ID: "stream"})
 		}},
-		{"card", "aibot_respond_msg", `{"msgtype":"template_card","template_card":{"card_type":"button_interaction","button_selection":{"disable":false},"extension":{"custom":"retained"}}}`, false, func(c *Client) (Frame, error) { return c.ReplyTemplateCard(context.Background(), "request", card) }},
+		{"card", "aibot_respond_msg", `{"msgtype":"template_card","template_card":{"card_type":"button_interaction","button_selection":{"disable":false},"extension":{"custom":"retained"}}}`, false, func(c *Client) (Frame, error) { return c.replylegacyCard(context.Background(), "request", card) }},
 		{"video", "aibot_respond_msg", `{"msgtype":"video","video":{"media_id":"media","title":"title","description":"description"}}`, false, func(c *Client) (Frame, error) {
-			return c.ReplyMedia(context.Background(), "request", "video", MediaContent{MediaID: "media", Title: "title", Description: "description"})
+			return c.replyMedia(context.Background(), "request", "video", MediaContent{MediaID: "media", Title: "title", Description: "description"})
 		}},
 		{"file", "aibot_respond_msg", `{"msgtype":"file","file":{"media_id":"media"}}`, false, func(c *Client) (Frame, error) {
-			return c.ReplyMedia(context.Background(), "request", "file", MediaContent{MediaID: "media"})
+			return c.replyMedia(context.Background(), "request", "file", MediaContent{MediaID: "media"})
 		}},
 		{"image", "aibot_respond_msg", `{"msgtype":"image","image":{"media_id":"media"}}`, false, func(c *Client) (Frame, error) {
-			return c.ReplyMedia(context.Background(), "request", "image", MediaContent{MediaID: "media"})
+			return c.replyMedia(context.Background(), "request", "image", MediaContent{MediaID: "media"})
 		}},
 		{"voice", "aibot_respond_msg", `{"msgtype":"voice","voice":{"media_id":"media"}}`, false, func(c *Client) (Frame, error) {
-			return c.ReplyMedia(context.Background(), "request", "voice", MediaContent{MediaID: "media"})
+			return c.replyMedia(context.Background(), "request", "voice", MediaContent{MediaID: "media"})
 		}},
 		{"stream", "aibot_respond_msg", `{"msgtype":"stream","stream":{"id":"stream","finish":true,"content":"full content","msg_item":[{"msgtype":"image","image":{"base64":"eA==","md5":"9dd4e461268c8034f5c8564e155c67a6"}}],"feedback":{"id":"feedback"}}}`, false, func(c *Client) (Frame, error) {
-			return c.ReplyStream(context.Background(), "request", Stream{ID: "stream", Finish: true, Content: "full content", MsgItem: []StreamItem{{MsgType: "image", Image: StreamImage{Base64: "eA==", MD5: "9dd4e461268c8034f5c8564e155c67a6"}}}, Feedback: &Feedback{ID: "feedback"}})
+			return c.replyStream(context.Background(), "request", Stream{ID: "stream", Finish: true, Content: "full content", MsgItem: []StreamItem{{MsgType: "image", Image: StreamImage{Base64: "eA==", MD5: "9dd4e461268c8034f5c8564e155c67a6"}}}, Feedback: &Feedback{ID: "feedback"}})
 		}},
 		{"stream card", "aibot_respond_msg", `{"msgtype":"stream_with_template_card","stream":{"id":"stream","finish":false,"content":"partial"},"template_card":{"card_type":"button_interaction","button_selection":{"disable":false},"extension":{"custom":"retained"}}}`, false, func(c *Client) (Frame, error) {
-			return c.ReplyStreamWithTemplateCard(context.Background(), "request", Stream{ID: "stream", Content: "partial"}, card)
+			return c.replyStreamWithlegacyCard(context.Background(), "request", Stream{ID: "stream", Content: "partial"}, card)
 		}},
 		{"update", "aibot_respond_update_msg", `{"response_type":"update_template_card","userids":["u1","u2"],"template_card":{"card_type":"button_interaction","button_selection":{"disable":false},"extension":{"custom":"retained"},"task_id":"original-task"}}`, false, func(c *Client) (Frame, error) {
-			update := make(TemplateCard, len(card)+1)
+			update := make(legacyCard, len(card)+1)
 			for key, value := range card {
 				update[key] = value
 			}
 			update["task_id"] = "original-task"
-			return c.UpdateTemplateCard(context.Background(), "request", update, []string{"u1", "u2"})
+			return c.updatelegacyCard(context.Background(), "request", update, []string{"u1", "u2"})
 		}},
 		{"welcome", "aibot_respond_welcome_msg", `{"msgtype":"text","text":{"content":"welcome"}}`, false, func(c *Client) (Frame, error) {
-			return c.ReplyWelcome(context.Background(), "request", MessageBody{MsgType: "text", Text: &TextContent{Content: "welcome"}})
+			return c.replyWelcome(context.Background(), "request", MessageBody{MsgType: "text", Text: &TextContent{Content: "welcome"}})
 		}},
 		{"send", "aibot_send_msg", `{"chatid":"chat","msgtype":"markdown","markdown":{"content":"active"}}`, true, func(c *Client) (Frame, error) {
-			return c.Send(context.Background(), "chat", MessageBody{MsgType: "markdown", Markdown: &TextContent{Content: "active"}})
+			return c.send(context.Background(), "chat", MessageBody{MsgType: "markdown", Markdown: &TextContent{Content: "active"}})
 		}},
 		{"send single with feedback", "aibot_send_msg", `{"chatid":"user","chat_type":1,"msgtype":"markdown","markdown":{"content":"active","feedback":{"id":"feedback"}}}`, true, func(c *Client) (Frame, error) {
-			return c.Send(context.Background(), "user", MessageBody{ChatType: 1, MsgType: "markdown", Markdown: &TextContent{Content: "active", Feedback: &Feedback{ID: "feedback"}}})
+			return c.send(context.Background(), "user", MessageBody{ChatType: 1, MsgType: "markdown", Markdown: &TextContent{Content: "active", Feedback: &Feedback{ID: "feedback"}}})
 		}},
 	}
 	for _, tt := range tests {
@@ -115,7 +115,7 @@ func TestStreamRejectsInvalidPayloadBeforeWrite(t *testing.T) {
 	}
 	for i, stream := range tests {
 		c, s := newTestClient(t)
-		if _, err := c.ReplyStream(context.Background(), "request", stream); err == nil {
+		if _, err := c.replyStream(context.Background(), "request", stream); err == nil {
 			t.Fatalf("case %d accepted", i)
 		}
 		select {
@@ -127,26 +127,26 @@ func TestStreamRejectsInvalidPayloadBeforeWrite(t *testing.T) {
 }
 
 func TestReplyRejectsInvalidTargetAndMessage(t *testing.T) {
-	c, s := newTestClient(t, WithRequestTimeout(20*time.Millisecond))
+	c, s := newTestClient(t, withRequestTimeout(20*time.Millisecond))
 	tests := []func() (Frame, error){
-		func() (Frame, error) { return c.ReplyMarkdown(context.Background(), "", "hello") },
-		func() (Frame, error) { return c.Reply(context.Background(), "r", MessageBody{MsgType: "unknown"}) },
-		func() (Frame, error) { return c.Reply(context.Background(), "r", MessageBody{MsgType: "markdown"}) },
+		func() (Frame, error) { return c.replyMarkdown(context.Background(), "", "hello") },
+		func() (Frame, error) { return c.reply(context.Background(), "r", MessageBody{MsgType: "unknown"}) },
+		func() (Frame, error) { return c.reply(context.Background(), "r", MessageBody{MsgType: "markdown"}) },
 		func() (Frame, error) {
-			return c.ReplyMedia(context.Background(), "r", "audio", MediaContent{MediaID: "m"})
+			return c.replyMedia(context.Background(), "r", "audio", MediaContent{MediaID: "m"})
 		},
-		func() (Frame, error) { return c.ReplyMedia(context.Background(), "r", "file", MediaContent{}) },
+		func() (Frame, error) { return c.replyMedia(context.Background(), "r", "file", MediaContent{}) },
 		func() (Frame, error) {
-			return c.ReplyWelcome(context.Background(), "r", MessageBody{MsgType: "markdown", Markdown: &TextContent{Content: "x"}})
-		},
-		func() (Frame, error) {
-			return c.Send(context.Background(), "", MessageBody{MsgType: "markdown", Markdown: &TextContent{Content: "x"}})
+			return c.replyWelcome(context.Background(), "r", MessageBody{MsgType: "markdown", Markdown: &TextContent{Content: "x"}})
 		},
 		func() (Frame, error) {
-			return c.Send(context.Background(), "chat", MessageBody{MsgType: "stream", Stream: &Stream{ID: "s"}})
+			return c.send(context.Background(), "", MessageBody{MsgType: "markdown", Markdown: &TextContent{Content: "x"}})
 		},
 		func() (Frame, error) {
-			return c.UpdateTemplateCard(context.Background(), "r", TemplateCard{"card_type": "button_interaction"}, nil)
+			return c.send(context.Background(), "chat", MessageBody{MsgType: "stream", Stream: &Stream{ID: "s"}})
+		},
+		func() (Frame, error) {
+			return c.updatelegacyCard(context.Background(), "r", legacyCard{"card_type": "button_interaction"}, nil)
 		},
 	}
 	for i, call := range tests {
@@ -162,7 +162,7 @@ func TestReplyRejectsInvalidTargetAndMessage(t *testing.T) {
 }
 
 func TestStreamQueueUsesRequestTimeoutAndPreservesOperation(t *testing.T) {
-	c, s := newTestClient(t, WithRequestTimeout(20*time.Millisecond))
+	c, s := newTestClient(t, withRequestTimeout(20*time.Millisecond))
 	locked := make(chan struct{})
 	release := make(chan struct{})
 	defer close(release)
@@ -171,14 +171,14 @@ func TestStreamQueueUsesRequestTimeoutAndPreservesOperation(t *testing.T) {
 	}()
 	<-locked
 	result := make(chan error, 1)
-	go func() { _, err := c.ReplyStream(context.Background(), "queued", Stream{ID: "shared"}); result <- err }()
+	go func() { _, err := c.replyStream(context.Background(), "queued", Stream{ID: "shared"}); result <- err }()
 	select {
 	case err := <-result:
 		if !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("queued stream error = %v", err)
 		}
 		var sdkErr *coreerrors.Error
-		if !errors.As(err, &sdkErr) || sdkErr.RequestID != "queued" || sdkErr.Operation != "aibot.aibot_respond_msg" {
+		if !errors.As(err, &sdkErr) || sdkErr.RequestID != "queued" || sdkErr.Operation != "work.aibot.websocket.aibot_respond_msg" {
 			t.Fatalf("queue lost operation metadata: %+v", sdkErr)
 		}
 	case <-time.After(time.Second):
@@ -195,13 +195,13 @@ func TestStreamOrderingAcrossRequestIDsAndCancellation(t *testing.T) {
 	c, s := newTestClient(t)
 	first := make(chan error, 1)
 	go func() {
-		_, err := c.ReplyStream(context.Background(), "first", Stream{ID: "shared", Content: "first"})
+		_, err := c.replyStream(context.Background(), "first", Stream{ID: "shared", Content: "first"})
 		first <- err
 	}()
 	f := s.next(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	second := make(chan error, 1)
-	go func() { _, err := c.ReplyStream(ctx, "second", Stream{ID: "shared", Content: "second"}); second <- err }()
+	go func() { _, err := c.replyStream(ctx, "second", Stream{ID: "shared", Content: "second"}); second <- err }()
 	select {
 	case b := <-s.writes:
 		t.Fatalf("second sent before first ACK: %s", b)
@@ -217,7 +217,7 @@ func TestStreamOrderingAcrossRequestIDsAndCancellation(t *testing.T) {
 	}
 	third := make(chan error, 1)
 	go func() {
-		_, err := c.ReplyStream(context.Background(), "third", Stream{ID: "shared", Finish: true, Content: strings.Repeat("x", 20480)})
+		_, err := c.replyStream(context.Background(), "third", Stream{ID: "shared", Finish: true, Content: strings.Repeat("x", 20480)})
 		third <- err
 	}()
 	f = s.next(t)

@@ -1,4 +1,4 @@
-package aibot
+package websocket
 
 import (
 	"context"

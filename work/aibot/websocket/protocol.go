@@ -1,10 +1,9 @@
-package aibot
+package websocket
 
 import (
 	"encoding/json"
-	"errors"
 
-	coreerrors "github.com/goairix/wx/v2/core/errors"
+	"github.com/goairix/wx/v2/work/aibot"
 )
 
 const (
@@ -22,13 +21,13 @@ const (
 )
 
 var (
-	ErrClosed               = errors.New("aibot client closed")
-	ErrNotReady             = errors.New("aibot client not ready")
-	ErrDisconnected         = errors.New("aibot connection lost")
-	ErrReplaced             = errors.New("aibot connection replaced")
-	ErrNotificationOverflow = errors.New("aibot notification buffer full")
-	ErrInvalidArgument      = errors.New("invalid aibot argument")
-	ErrProtocol             = errors.New("invalid aibot protocol frame")
+	ErrClosed               = aibot.ErrClosed
+	ErrNotReady             = aibot.ErrNotReady
+	ErrDisconnected         = aibot.ErrDisconnected
+	ErrReplaced             = aibot.ErrReplaced
+	ErrNotificationOverflow = aibot.ErrNotificationOverflow
+	ErrInvalidArgument      = aibot.ErrInvalidArgument
+	ErrProtocol             = aibot.ErrProtocol
 )
 
 // Headers identifies a request or callback. Additional headers remain in Frame.Raw.
@@ -47,14 +46,5 @@ type Frame struct {
 }
 
 func operationError(operation, reqID string, cause error) error {
-	wrapped := &coreerrors.Error{Platform: "work", Operation: "aibot." + operation, RequestID: reqID, Message: "intelligent bot operation failed", Err: cause}
-	var inner *coreerrors.Error
-	if errors.As(cause, &inner) {
-		wrapped.Code = inner.Code
-		wrapped.HTTPStatus = inner.HTTPStatus
-		if reqID == "" {
-			wrapped.RequestID = inner.RequestID
-		}
-	}
-	return wrapped
+	return aibot.WrapError("websocket."+operation, reqID, cause)
 }

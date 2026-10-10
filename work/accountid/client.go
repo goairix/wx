@@ -3,6 +3,7 @@ package accountid
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/goairix/wx/v2/work/internal/api"
 )
@@ -165,5 +166,17 @@ func (c *Client) ConvertTemporaryExternalUserID(
 		body,
 		result,
 	)
+	return result, err
+}
+
+// RobotOpenUserIDToUserID converts bot users through an authenticated self-built application.
+func (c *Client) RobotOpenUserIDToUserID(ctx context.Context, ids []string) (*UserIDResult, error) {
+	if ctx == nil || len(ids) < 1 || len(ids) > 1000 {
+		return nil, fmt.Errorf("work.account_id.robot_open_user_to_user: require 1..1000 IDs and context")
+	}
+	result := new(UserIDResult)
+	err := c.api.Post(ctx, "work.account_id.robot_open_user_to_user", "cgi-bin/batch/openuserid_to_userid", struct {
+		IDs []string `json:"open_userid_list"`
+	}{ids}, result)
 	return result, err
 }

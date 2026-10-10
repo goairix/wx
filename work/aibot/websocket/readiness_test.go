@@ -1,4 +1,4 @@
-package aibot
+package websocket
 
 import (
 	"context"
@@ -25,12 +25,12 @@ func TestCallbacksImmediatelyAfterSubscribeACKCanReply(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				first, second := newTestConnection(), newTestConnection()
 				var calls atomic.Int32
-				c, err := New(Config{BotID: "bot", Secret: "secret"}, WithDialer(DialerFunc(func(context.Context, string) (Connection, error) {
+				c, err := newClient(Config{BotID: "bot", Secret: "secret"}, withDialer(DialerFunc(func(context.Context, string) (Connection, error) {
 					if calls.Add(1) == 1 {
 						return first, nil
 					}
 					return second, nil
-				})), WithHeartbeat(time.Hour, time.Second), WithReconnectPolicy(ReconnectPolicy{InitialDelay: time.Millisecond, MaxDelay: time.Millisecond, MaxAttempts: 1}))
+				})), withHeartbeat(time.Hour, time.Second), withReconnectPolicy(ReconnectPolicy{InitialDelay: time.Millisecond, MaxDelay: time.Millisecond, MaxAttempts: 1}))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -59,9 +59,9 @@ func TestCallbacksImmediatelyAfterSubscribeACKCanReply(t *testing.T) {
 						}
 						result := replyResult{readyNotice: ready, state: c.State()}
 						if n.Message != nil {
-							_, result.err = c.ReplyMarkdown(ctx, n.Frame.Headers.ReqID, "received")
+							_, result.err = c.replyMarkdown(ctx, n.Frame.Headers.ReqID, "received")
 						} else {
-							_, result.err = c.ReplyWelcome(ctx, n.Frame.Headers.ReqID, MessageBody{MsgType: "text", Text: &TextContent{Content: "welcome"}})
+							_, result.err = c.replyWelcome(ctx, n.Frame.Headers.ReqID, MessageBody{MsgType: "text", Text: &TextContent{Content: "welcome"}})
 						}
 						replies <- result
 					}
@@ -129,7 +129,7 @@ func TestCallbacksImmediatelyAfterSubscribeACKCanReply(t *testing.T) {
 
 func TestRejectedSubscribeDoesNotPublishBusinessCallbacks(t *testing.T) {
 	s := newTestConnection()
-	c, err := New(Config{BotID: "bot", Secret: "secret"}, WithDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })))
+	c, err := newClient(Config{BotID: "bot", Secret: "secret"}, withDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestRejectedSubscribeDoesNotPublishBusinessCallbacks(t *testing.T) {
 
 func TestReplacementWhileSubscribingTerminatesWithoutReady(t *testing.T) {
 	s := newTestConnection()
-	c, err := New(Config{BotID: "bot", Secret: "secret"}, WithDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })))
+	c, err := newClient(Config{BotID: "bot", Secret: "secret"}, withDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestReplacementWhileSubscribingTerminatesWithoutReady(t *testing.T) {
 
 func TestPreReadyCallbacksDoNotBlockSubscribeACK(t *testing.T) {
 	s := newTestConnection()
-	c, err := New(Config{BotID: "bot", Secret: "secret"}, WithDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })))
+	c, err := newClient(Config{BotID: "bot", Secret: "secret"}, withDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestPreReadyCallbacksDoNotBlockSubscribeACK(t *testing.T) {
 
 func TestPreReadyCallbackQueueOverflowTerminates(t *testing.T) {
 	s := newTestConnection()
-	c, err := New(Config{BotID: "bot", Secret: "secret"}, WithNotificationBuffer(4), WithDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })))
+	c, err := newClient(Config{BotID: "bot", Secret: "secret"}, withNotificationBuffer(4), withDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestPreReadyCallbackQueueOverflowTerminates(t *testing.T) {
 
 func TestReadyNotificationOverflowDiscardsStagedCallbacks(t *testing.T) {
 	s := newTestConnection()
-	c, err := New(Config{BotID: "bot", Secret: "secret"}, WithNotificationBuffer(2), WithDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })))
+	c, err := newClient(Config{BotID: "bot", Secret: "secret"}, withNotificationBuffer(2), withDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestReadyCallbackImmediatelyBeforeEOFIsDelivered(t *testing.T) {
 	previous := runtime.GOMAXPROCS(1)
 	defer runtime.GOMAXPROCS(previous)
 	s := newTestConnection()
-	c, err := New(Config{BotID: "bot", Secret: "secret"}, WithDialer(DialerFunc(func(context.Context, string) (Connection, error) { return orderedEOFConnection{s}, nil })), WithReconnectPolicy(ReconnectPolicy{InitialDelay: time.Second, MaxDelay: time.Second, MaxAttempts: 0}))
+	c, err := newClient(Config{BotID: "bot", Secret: "secret"}, withDialer(DialerFunc(func(context.Context, string) (Connection, error) { return orderedEOFConnection{s}, nil })), withReconnectPolicy(ReconnectPolicy{InitialDelay: time.Second, MaxDelay: time.Second, MaxAttempts: 0}))
 	if err != nil {
 		t.Fatal(err)
 	}

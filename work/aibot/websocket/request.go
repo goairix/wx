@@ -1,4 +1,4 @@
-package aibot
+package websocket
 
 import (
 	"context"
@@ -109,7 +109,7 @@ func (c *Client) request(ctx context.Context, command, reqID string, body any) (
 		return s.request(deadline, command, reqID, body)
 	})
 	var queueError *coreerrors.Error
-	if errors.As(err, &queueError) && queueError.Operation == "aibot.queue" {
+	if errors.As(err, &queueError) && queueError.Operation == "work.aibot.websocket.queue" {
 		return frame, operationError(command, reqID, err)
 	}
 	return frame, err
@@ -254,7 +254,7 @@ func (s *session) request(ctx context.Context, command, reqID string, body any) 
 		}
 		if *ack.ErrCode != 0 {
 			// Server text is retained in the returned error but is never logged.
-			return ack, &coreerrors.Error{Platform: "work", Operation: "aibot." + command, RequestID: reqID, Code: strconv.Itoa(*ack.ErrCode), Message: ack.ErrMsg}
+			return ack, &coreerrors.Error{Platform: "work", Operation: "work.aibot.websocket." + command, RequestID: reqID, Code: strconv.Itoa(*ack.ErrCode), Message: ack.ErrMsg}
 		}
 		return ack, nil
 	case <-ctx.Done():

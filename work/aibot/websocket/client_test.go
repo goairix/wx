@@ -1,4 +1,4 @@
-package aibot
+package websocket
 
 import (
 	"context"
@@ -66,11 +66,11 @@ func (s *testConnection) ack(reqID string, code int, body any) {
 }
 func (s *testConnection) push(b string) { s.reads <- []byte(b) }
 func (s *testConnection) drop()         { _ = s.Close() }
-func newTestClient(t *testing.T, opts ...Option) (*Client, *testConnection) {
+func newTestClient(t *testing.T, opts ...option) (*Client, *testConnection) {
 	t.Helper()
 	s := newTestConnection()
-	opts = append([]Option{WithDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })), WithHeartbeat(time.Hour, time.Second)}, opts...)
-	c, err := New(Config{BotID: "bot", Secret: "secret"}, opts...)
+	opts = append([]option{withDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })), withHeartbeat(time.Hour, time.Second)}, opts...)
+	c, err := newClient(Config{BotID: "bot", Secret: "secret"}, opts...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func newTestClient(t *testing.T, opts ...Option) (*Client, *testConnection) {
 }
 func TestSubscribeRequiresACKAndCredentials(t *testing.T) {
 	s := newTestConnection()
-	c, err := New(Config{BotID: "bot-1", Secret: "sensitive"}, WithDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })))
+	c, err := newClient(Config{BotID: "bot-1", Secret: "sensitive"}, withDialer(DialerFunc(func(context.Context, string) (Connection, error) { return s, nil })))
 	if err != nil {
 		t.Fatal(err)
 	}

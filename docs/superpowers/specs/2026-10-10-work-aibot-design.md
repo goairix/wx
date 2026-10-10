@@ -1,5 +1,7 @@
 # 企业微信智能机器人长连接
 
+> 历史设计：已由 [完整能力重设计](2026-10-10-work-aibot-full-design.md) 替代。以下记录原长连接版本，当前入口为 `work/aibot/websocket.New`。
+
 依据用户提供的完整范围、官方长连接协议和 WecomTeam/aibot-node-sdk。机器人以独立 `work/aibot.New(Config{BotID, Secret}, ...Option)` 创建，不要求 CorpID、access_token 或缓存。
 
 ## 接口与生命周期

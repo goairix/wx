@@ -56,6 +56,7 @@ type Message struct {
 	CreateTime  int64            `json:"create_time,omitempty"`
 	ResponseURL string           `json:"response_url,omitempty"`
 	MsgType     string           `json:"msgtype"`
+	Stream      *StreamRefresh   `json:"stream,omitempty"`
 	Text        *TextContent     `json:"text,omitempty"`
 	Image       *DownloadContent `json:"image,omitempty"`
 	Voice       *VoiceContent    `json:"voice,omitempty"`

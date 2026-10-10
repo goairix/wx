@@ -6,6 +6,7 @@ import (
 	"crypto/cipher"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -117,4 +118,33 @@ func fixtureCiphertext(t *testing.T, key, message []byte, receiver string, padBl
 	ciphertext := make([]byte, len(plain))
 	cipher.NewCBCEncrypter(block, key[:aes.BlockSize]).CryptBlocks(ciphertext, plain)
 	return base64.StdEncoding.EncodeToString(ciphertext)
+}
+
+func TestCipherEmptyReceiverStrict(t *testing.T) {
+	key := "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG"
+	c, err := NewMessageCipher(CipherConfig{EncodingAESKey: key, AllowEmptyReceiver: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encrypted, err := c.Encrypt([]byte("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := c.Decrypt(encrypted)
+	if err != nil || string(plain) != "hello" {
+		t.Fatalf("%q %v", plain, err)
+	}
+	wrong, err := EncryptMessage(key, []byte("hello"), "corp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = c.Decrypt(wrong); !errors.Is(err, ErrInvalidReceiver) {
+		t.Fatal(err)
+	}
+	if _, err = NewMessageCipher(CipherConfig{EncodingAESKey: key}); !errors.Is(err, ErrInvalidReceiver) {
+		t.Fatal(err)
+	}
+	if _, err = DecryptMessage(key, encrypted, ""); !errors.Is(err, ErrInvalidReceiver) {
+		t.Fatal(err)
+	}
 }

@@ -1,0 +1,49 @@
+{
+  "card_type": "multiple_interaction",
+  "source": {
+    "icon_url": "https://wework.qpic.cn/wwpic/252813_jOfDHtcISzuodLa_1629280209/0 ",
+    "desc": "企业微信"
+  },
+  "main_title": {
+    "title": "欢迎使用企业微信",
+    "desc": "您的好友正在邀请您加入企业微信"
+  },
+  "select_list": [
+    {
+      "question_key": "question_key_one",
+      "title": "选择标签1",
+      "disable": false,
+      "selected_id": "id_one",
+      "option_list": [
+        {
+          "id": "id_one",
+          "text": "选择器选项1"
+        },
+        {
+          "id": "id_two",
+          "text": "选择器选项2"
+        }
+      ]
+    },
+    {
+      "question_key": "question_key_two",
+      "title": "选择标签2",
+      "selected_id": "id_three",
+      "option_list": [
+        {
+          "id": "id_three",
+          "text": "选择器选项3"
+        },
+        {
+          "id": "id_four",
+          "text": "选择器选项4"
+        }
+      ]
+    }
+  ],
+  "submit_button": {
+    "text": "提交",
+    "key": "submit_key"
+  },
+  "task_id": "task_id"
+}

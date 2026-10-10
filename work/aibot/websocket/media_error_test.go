@@ -1,4 +1,4 @@
-package aibot
+package websocket
 
 import (
 	"context"
@@ -14,7 +14,7 @@ func TestUploadMalformedACKPreservesJSONCause(t *testing.T) {
 			c, s := newTestClient(t)
 			result := make(chan error, 1)
 			go func() {
-				_, err := c.UploadMedia(context.Background(), "file", "x.txt", strings.NewReader("hello"))
+				_, err := c.uploadMedia(context.Background(), "file", "x.txt", strings.NewReader("hello"))
 				result <- err
 			}()
 			init := s.next(t)

@@ -1,0 +1,32 @@
+{
+  "card_type": "vote_interaction",
+  "source": {
+    "icon_url": "https://wework.qpic.cn/wwpic/252813_jOfDHtcISzuodLa_1629280209/0 ",
+    "desc": "企业微信"
+  },
+  "main_title": {
+    "title": "欢迎使用企业微信",
+    "desc": "您的好友正在邀请您加入企业微信"
+  },
+  "checkbox": {
+    "question_key": "question_key",
+    "option_list": [
+      {
+        "id": "id_one",
+        "text": "选择题选项1"
+      },
+      {
+        "id": "id_two",
+        "text": "选择题选项2",
+        "is_checked": true
+      }
+    ],
+    "disable": false,
+    "mode": 1
+  },
+  "submit_button": {
+    "text": "提交",
+    "key": "submit_key"
+  },
+  "task_id": "task_id"
+}
