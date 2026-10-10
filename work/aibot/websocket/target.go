@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -67,7 +68,9 @@ func (c *Client) Reply(ctx context.Context, target *ReceivedCallback, reply *aib
 			return Frame{}, err
 		}
 		var wire legacyCard
-		if err = json.Unmarshal(card, &wire); err != nil {
+		decoder := json.NewDecoder(bytes.NewReader(card))
+		decoder.UseNumber()
+		if err = decoder.Decode(&wire); err != nil {
 			return Frame{}, err
 		}
 		return c.updatelegacyCard(bound, target.reqID, wire, reply.UserIDs)
@@ -94,7 +97,9 @@ func legacyBody(m aibot.OutgoingMessage) (MessageBody, error) {
 	var body MessageBody
 	b, err := json.Marshal(m)
 	if err == nil {
-		err = json.Unmarshal(b, &body)
+		decoder := json.NewDecoder(bytes.NewReader(b))
+		decoder.UseNumber()
+		err = decoder.Decode(&body)
 	}
 	if err != nil {
 		return body, errors.Join(aibot.ErrInvalidArgument, err)

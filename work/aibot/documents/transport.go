@@ -80,11 +80,33 @@ func (t *transport) post(ctx context.Context, b []byte, sent *atomic.Bool) (*htt
 }
 func (t *transport) rpcError(method string, meta ResponseMeta, cause error) error {
 	e := &coreerrors.Error{Platform: "work", Operation: "work.aibot.documents." + method, RequestID: meta.RequestID, HTTPStatus: meta.HTTPStatus, Message: "document MCP operation failed", Err: cause}
+	var nested *coreerrors.Error
+	if errors.As(cause, &nested) && nested.HTTPStatus != 0 {
+		e.HTTPStatus = nested.HTTPStatus
+	}
 	var rpc *RPCError
 	if errors.As(cause, &rpc) {
 		e.Code = strconv.Itoa(rpc.Code)
 	}
 	return e
+}
+
+// Session expiry applies to every POST, including notifications and replies to
+// server requests. Callers decide whether other HTTP statuses are acceptable.
+func (t *transport) checkResponseStatus(status int, accepted bool) error {
+	if status == http.StatusNotFound {
+		t.mu.Lock()
+		hasSession := t.sessionID != ""
+		t.mu.Unlock()
+		if hasSession {
+			t.cancel(ErrSessionExpired)
+			return ErrSessionExpired
+		}
+	}
+	if !accepted {
+		return aibot.ErrProtocol
+	}
+	return nil
 }
 func (t *transport) initialize(ctx context.Context) error {
 	raw, meta, err := t.call(ctx, "initialize", map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{}, "clientInfo": map[string]string{"name": "goairix-wx", "version": "2"}})
@@ -128,8 +150,8 @@ func (t *transport) notify(ctx context.Context, method string, params any) error
 		return err
 	}
 	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != http.StatusAccepted {
-		return t.rpcError(method, ResponseMeta{HTTPStatus: response.StatusCode}, aibot.ErrProtocol)
+	if err := t.checkResponseStatus(response.StatusCode, response.StatusCode == http.StatusAccepted); err != nil {
+		return t.rpcError(method, ResponseMeta{HTTPStatus: response.StatusCode}, err)
 	}
 	return nil
 }
@@ -177,23 +199,30 @@ func (t *transport) call(ctx context.Context, method string, params any) (result
 	}
 	defer func() { _ = response.Body.Close() }()
 	meta.HTTPStatus = response.StatusCode
-	if response.StatusCode == http.StatusNotFound && t.headers().Get("Mcp-Session-Id") != "" {
-		t.cancel(ErrSessionExpired)
-		return nil, meta, t.rpcError(method, meta, ErrSessionExpired)
+	if statusErr := t.checkResponseStatus(response.StatusCode, true); statusErr != nil {
+		return nil, meta, t.rpcError(method, meta, statusErr)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 || response.StatusCode == http.StatusAccepted {
 		raw, readErr := readJSON(response.Body, t.shared.MaxHTTPResponseBytes)
 		var remote struct {
-			ID     json.RawMessage `json:"id"`
-			Error  *RPCError       `json:"error"`
-			Result json.RawMessage `json:"result"`
+			JSONRPC string          `json:"jsonrpc"`
+			ID      json.RawMessage `json:"id"`
+			Method  string          `json:"method"`
+			Error   *RPCError       `json:"error"`
+			Result  json.RawMessage `json:"result"`
 		}
 		parseErr := json.Unmarshal(raw, &remote)
+		var id string
+		idErr := json.Unmarshal(remote.ID, &id)
+		matched := parseErr == nil && idErr == nil && id == meta.RequestID && remote.JSONRPC == "2.0" && remote.Method == "" && !errors.Is(readErr, aibot.ErrBodyTooLarge)
 		cause := aibot.ErrProtocol
-		if parseErr == nil && remote.Error != nil {
+		if matched && remote.Error != nil && remote.Result == nil {
 			cause = remote.Error
 		}
-		return remote.Result, meta, t.rpcError(method, meta, errors.Join(cause, readErr, parseErr))
+		if matched && remote.Error == nil {
+			result = remote.Result
+		}
+		return result, meta, t.rpcError(method, meta, errors.Join(cause, readErr, parseErr, idErr))
 	}
 	if method == "initialize" {
 		sid := response.Header.Get("Mcp-Session-Id")
@@ -329,8 +358,8 @@ func (t *transport) serverReply(ctx context.Context, id json.RawMessage, method 
 		return err
 	}
 	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != 202 {
-		return aibot.ErrProtocol
+	if err := t.checkResponseStatus(response.StatusCode, response.StatusCode == http.StatusAccepted); err != nil {
+		return t.rpcError("server_reply", ResponseMeta{HTTPStatus: response.StatusCode}, err)
 	}
 	return nil
 }

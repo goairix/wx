@@ -21,22 +21,44 @@ func readSSE(ctx context.Context, r io.Reader, limit int64, deliver func([]byte)
 	reader := bufio.NewReader(io.LimitReader(r, limit+1))
 	var data strings.Builder
 	var total int64
+	firstLine, skipLF := true, false
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		line, err := reader.ReadString('\n')
-		total += int64(len(line))
-		if total > limit {
-			return aibot.ErrBodyTooLarge
+		var lineData strings.Builder
+		for {
+			b, err := reader.ReadByte()
+			if err == io.EOF {
+				return io.ErrUnexpectedEOF
+			}
+			if err != nil {
+				return err
+			}
+			total++
+			if total > limit {
+				return aibot.ErrBodyTooLarge
+			}
+			if skipLF {
+				skipLF = false
+				if b == '\n' {
+					continue
+				}
+			}
+			if b == '\r' {
+				skipLF = true
+				break
+			}
+			if b == '\n' {
+				break
+			}
+			lineData.WriteByte(b)
 		}
-		if err != nil && err != io.EOF {
-			return err
+		line := lineData.String()
+		if firstLine {
+			line = strings.TrimPrefix(line, "\ufeff")
+			firstLine = false
 		}
-		if err == io.EOF {
-			return io.ErrUnexpectedEOF
-		}
-		line = strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
 		if line == "" {
 			if data.Len() > 0 {
 				payload := strings.TrimSuffix(data.String(), "\n")

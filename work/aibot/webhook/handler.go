@@ -8,6 +8,7 @@ import (
 
 	corehook "github.com/goairix/wx/v2/core/webhook"
 	"github.com/goairix/wx/v2/work/aibot"
+	"github.com/goairix/wx/v2/work/aibot/internal/settings"
 )
 
 type Handler interface {
@@ -20,7 +21,7 @@ func (f HandlerFunc) Handle(ctx context.Context, cb *aibot.Callback) (*aibot.Rep
 }
 func (c *Client) Handler(next Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if next == nil {
+		if settings.IsNil(next) {
 			c.writeError(w, aibot.ErrInvalidArgument)
 			return
 		}

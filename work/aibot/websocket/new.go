@@ -19,6 +19,9 @@ func New(cfg Config, opts ...aibot.Option) (*Client, error) {
 		o.url = cfg.URL
 	}
 	if cfg.Dialer != nil {
+		if settings.IsNil(cfg.Dialer) {
+			return nil, aibot.WrapError("websocket.new", "", aibot.ErrInvalidArgument)
+		}
 		o.dialer = cfg.Dialer
 	}
 	if cfg.HeartbeatInterval != 0 {

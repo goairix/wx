@@ -15,6 +15,20 @@ import (
 )
 
 type contextKey struct{}
+type nilCaller func(context.Context, string, any) (*ToolResult, error)
+
+func (f nilCaller) CallTool(ctx context.Context, name string, args any) (*ToolResult, error) {
+	return f(ctx, name, args)
+}
+func (nilCaller) Tools(context.Context) ([]Tool, error) { return nil, nil }
+
+func TestNewWithCallerRejectsTypedNilFunction(t *testing.T) {
+	var caller nilCaller
+	if _, err := NewWithCaller(caller); !errors.Is(err, aibot.ErrInvalidArgument) {
+		t.Fatal(err)
+	}
+}
+
 type testCaller struct {
 	started chan struct{}
 	wait    bool

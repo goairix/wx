@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/goairix/wx/v2/core/logging"
+	"github.com/goairix/wx/v2/work/aibot/internal/settings"
 )
 
 type State string
@@ -234,10 +235,10 @@ func (c *Client) run(ctx context.Context, first chan<- error) {
 		dialCtx, dialCancel := context.WithTimeout(ctx, c.options.requestTimeout)
 		conn, err := c.options.dialer.Dial(dialCtx, c.options.url)
 		dialCancel()
-		if err != nil && conn != nil {
+		if err != nil && !settings.IsNil(conn) {
 			_ = conn.Close()
 		}
-		if err == nil && conn == nil {
+		if err == nil && settings.IsNil(conn) {
 			err = ErrProtocol
 		}
 		authRejected := false

@@ -2,6 +2,8 @@ package websocket
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 )
 
@@ -35,5 +37,23 @@ func TestUploadLowLevelWire(t *testing.T) {
 	s.ack(f.Headers.ReqID, 0, map[string]any{"type": "file", "media_id": "m", "created_at": 123})
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestInitUploadValidatesFilenameBeforeRequest(t *testing.T) {
+	client, err := New(Config{BotID: "id", Secret: "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.Close() }()
+	for _, filename := range []string{strings.Repeat("a", 257), strings.Repeat("中", 86), string([]byte{0xff})} {
+		_, err = client.InitUpload(context.Background(), UploadInitRequest{Type: "file", Filename: filename, TotalSize: 5, TotalChunks: 1, MD5: "827ccb0eea8a706c4c34a16891f84e7b"})
+		if !errors.Is(err, ErrInvalidArgument) {
+			t.Fatalf("invalid filename reached request: %v", err)
+		}
+	}
+	_, err = client.InitUpload(context.Background(), UploadInitRequest{Type: "file", Filename: strings.Repeat("a", 256), TotalSize: 5, TotalChunks: 1, MD5: "827ccb0eea8a706c4c34a16891f84e7b"})
+	if !errors.Is(err, ErrNotReady) {
+		t.Fatalf("valid filename rejected: %v", err)
 	}
 }

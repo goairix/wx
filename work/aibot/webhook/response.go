@@ -76,9 +76,12 @@ func (c *Client) ReplyByURL(ctx context.Context, responseURL string, message aib
 	var fields map[string]json.RawMessage
 	if parseErr == nil {
 		parseErr = json.Unmarshal(data, &fields)
-		if fields == nil || fields["errcode"] == nil {
+		if fields == nil || fields["errcode"] == nil || bytes.Equal(bytes.TrimSpace(fields["errcode"]), []byte("null")) {
 			parseErr = aibot.ErrProtocol
 		}
+	}
+	if parseErr != nil {
+		parseErr = errors.Join(aibot.ErrProtocol, parseErr)
 	}
 	cause := errors.Join(readErr, parseErr)
 	if result.ErrCode != 0 || response.StatusCode < 200 || response.StatusCode >= 300 {

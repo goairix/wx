@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"unicode/utf8"
 
 	"github.com/goairix/wx/v2/work/aibot"
 )
@@ -41,7 +42,7 @@ func (c *Client) InitUpload(ctx context.Context, r UploadInitRequest) (*UploadIn
 		limit = 20 << 20
 	}
 	digest, err := hex.DecodeString(r.MD5)
-	if limit == 0 || r.Filename == "" || r.TotalSize < 5 || r.TotalSize > limit || r.TotalChunks < 1 || r.TotalChunks > 100 || r.TotalSize > int64(r.TotalChunks)*(512<<10) || err != nil || len(digest) != 16 {
+	if limit == 0 || r.Filename == "" || len(r.Filename) > 256 || !utf8.ValidString(r.Filename) || r.TotalSize < 5 || r.TotalSize > limit || r.TotalChunks < 1 || r.TotalChunks > 100 || r.TotalSize > int64(r.TotalChunks)*(512<<10) || err != nil || len(digest) != 16 {
 		return nil, operationError(CmdUploadInit, "", ErrInvalidArgument)
 	}
 	f, err := c.request(ctx, CmdUploadInit, "", r)

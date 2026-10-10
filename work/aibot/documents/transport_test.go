@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	coreerrors "github.com/goairix/wx/v2/core/errors"
 	"github.com/goairix/wx/v2/work/aibot"
 )
 
@@ -53,6 +54,10 @@ func TestJSONAndSSEMatchRPC(t *testing.T) {
 		name, version, body string
 		wantError           bool
 	}{
+		{"cr-only", "2025-06-18", `data: {"jsonrpc":"2.0","id":%s,"result":{"content":[]}}` + "\r\r", false},
+		{"bom", "2025-06-18", "\ufeff" + `data: {"jsonrpc":"2.0","id":%s,"result":{"content":[]}}` + "\n\n", false},
+		{"crlf", "2025-06-18", `data: {"jsonrpc":"2.0","id":%s,"result":{"content":[]}}` + "\r\n\r\n", false},
+		{"mixed", "2025-06-18", ": comment\r\n" + "data: {\r" + `data: "jsonrpc":"2.0","id":%s,"result":{"content":[]}` + "\n" + "data: }\r\n\r", false},
 		{"multiline", "2025-06-18", "data: {\n" + "data: \"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{\"content\":[]}\n" + "data: }\n\n", false},
 		{"batch", "2025-03-26", `data: [{"jsonrpc":"2.0","method":"notifications/progress","params":{}},{"jsonrpc":"2.0","id":%s,"result":{"content":[]}}]` + "\n\n", false},
 		{"batch-new", "2025-06-18", `data: [{"jsonrpc":"2.0","id":%s,"result":{"content":[]}}]` + "\n\n", true},
@@ -154,6 +159,84 @@ func TestExpiredSessionRequiresExplicitConnect(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAuxiliaryPost404ExpiresSession(t *testing.T) {
+	for _, kind := range []string{"server-reply", "notification"} {
+		t.Run(kind, func(t *testing.T) {
+			var initializes, calls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodDelete {
+					w.WriteHeader(204)
+					return
+				}
+				var q rpcRequest
+				if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
+					t.Error(err)
+					return
+				}
+				switch q.Method {
+				case "initialize":
+					initializes.Add(1)
+					w.Header().Set("Mcp-Session-Id", "session")
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{}}}}`, q.ID)
+				case "notifications/initialized":
+					w.WriteHeader(202)
+				case "tools/call":
+					if calls.Add(1) == 1 && kind == "server-reply" {
+						w.Header().Set("Content-Type", "text/event-stream")
+						_, _ = fmt.Fprintf(w, "data: {\"jsonrpc\":\"2.0\",\"id\":\"server-ping\",\"method\":\"ping\"}\n\ndata: {\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{\"content\":[]}}\n\n", q.ID)
+					} else {
+						w.Header().Set("Content-Type", "application/json")
+						_, _ = fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%s,"result":{"content":[]}}`, q.ID)
+					}
+				default:
+					if r.Header.Get("Mcp-Session-Id") != "session" {
+						t.Error("missing session on auxiliary POST")
+					}
+					w.WriteHeader(404)
+				}
+			}))
+			defer server.Close()
+			c, err := New(Config{URL: server.URL})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = c.Connect(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = c.Close() }()
+			if kind == "notification" {
+				err = c.transport.notify(context.Background(), "notifications/progress", nil)
+			} else {
+				_, err = c.CallTool(context.Background(), "tool", nil)
+			}
+			var metadata *coreerrors.Error
+			if !errors.Is(err, ErrSessionExpired) || !errors.As(err, &metadata) || metadata.HTTPStatus != 404 {
+				t.Fatalf("not expired or HTTP status lost: %v %+v", err, metadata)
+			}
+			if _, err = c.CallTool(context.Background(), "tool", nil); !errors.Is(err, ErrSessionExpired) {
+				t.Fatalf("expired session remained ready: %v", err)
+			}
+			if err = c.Connect(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if initializes.Load() != 2 {
+				t.Fatalf("initialize count = %d", initializes.Load())
+			}
+			if _, err = c.CallTool(context.Background(), "tool", nil); err != nil {
+				t.Fatal(err)
+			}
+			wantCalls := int32(1)
+			if kind == "server-reply" {
+				wantCalls = 2
+			}
+			if calls.Load() != wantCalls {
+				t.Fatalf("old operation replayed: %d calls", calls.Load())
+			}
+		})
+	}
+}
 func TestCloseCancelsBeforeBoundedDelete(t *testing.T) {
 	started := make(chan struct{})
 	server := serveMCP(t, "2025-06-18", func(w http.ResponseWriter, r *http.Request, q rpcRequest) {
@@ -235,5 +318,47 @@ func TestHTTPErrorPreservesRPCErrorCode(t *testing.T) {
 	var rpc *RPCError
 	if !errors.As(err, &rpc) || rpc.Code != -32000 || string(rpc.Data) != `{"detail":false}` {
 		t.Fatalf("RPC lost: %v", err)
+	}
+}
+
+func TestHTTPErrorOnlyPreservesMatchedRPCResult(t *testing.T) {
+	for _, status := range []int{500, 202} {
+		for _, tc := range []struct {
+			name, body string
+			wantResult bool
+		}{
+			{"matching", `{"jsonrpc":"2.0","id":%s,"result":{"content":[],"structuredContent":{"created":true}}}`, true},
+			{"foreign", `{"jsonrpc":"2.0","id":"foreign","result":{"content":[],"extra":%s}}`, false},
+			{"missing", `{"jsonrpc":"2.0","result":{"content":[],"extra":%s}}`, false},
+			{"bad-version", `{"jsonrpc":"1.0","id":%s,"result":{"content":[]}}`, false},
+			{"foreign-error", `{"jsonrpc":"2.0","id":"foreign","error":{"code":-32602,"data":%s}}`, false},
+		} {
+			t.Run(fmt.Sprintf("%d/%s", status, tc.name), func(t *testing.T) {
+				server := serveMCP(t, "2025-06-18", func(w http.ResponseWriter, r *http.Request, q rpcRequest) {
+					if q.Method == "DELETE" {
+						w.WriteHeader(204)
+						return
+					}
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(status)
+					_, _ = fmt.Fprintf(w, tc.body, q.ID)
+				})
+				defer server.Close()
+				c, err := New(Config{URL: server.URL})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = c.Connect(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = c.Close() }()
+				result, err := c.CallTool(context.Background(), "create_doc", nil)
+				var metadata *coreerrors.Error
+				var rpc *RPCError
+				if (result != nil) != tc.wantResult || !errors.Is(err, aibot.ErrProtocol) || !errors.As(err, &metadata) || metadata.HTTPStatus != status || metadata.RequestID == "" || errors.As(err, &rpc) {
+					t.Fatalf("result=%+v metadata=%+v err=%v", result, metadata, err)
+				}
+			})
+		}
 	}
 }

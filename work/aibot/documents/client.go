@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
-	"reflect"
 	"sync"
 
 	"github.com/goairix/wx/v2/work/aibot"
@@ -40,7 +39,7 @@ func New(cfg Config, opts ...aibot.Option) (*Client, error) {
 	return &Client{config: cfg, shared: shared}, nil
 }
 func NewWithCaller(caller Caller, opts ...aibot.Option) (*Client, error) {
-	if caller == nil || (reflect.ValueOf(caller).Kind() == reflect.Pointer && reflect.ValueOf(caller).IsNil()) {
+	if settings.IsNil(caller) {
 		return nil, aibot.WrapError("documents.new", "", aibot.ErrInvalidArgument)
 	}
 	shared, err := settings.Resolve(opts...)

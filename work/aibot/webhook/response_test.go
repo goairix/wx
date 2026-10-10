@@ -70,3 +70,20 @@ func TestReplyByURLDoesNotFollowRedirect(t *testing.T) {
 		t.Fatalf("redirect replay: %+v %v %d", result, err, requests.Load())
 	}
 }
+
+func TestReplyByURLRejectsInvalidErrorCode(t *testing.T) {
+	for _, body := range []string{`{"errcode":null}`, `{}`, `{"errcode":"0"}`, `{"errcode":0.5}`} {
+		t.Run(body, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(body)) }))
+			defer server.Close()
+			client, err := New(Config{Token: "t", EncodingAESKey: testKey})
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := client.ReplyByURL(context.Background(), server.URL, aibot.OutgoingMessage{MsgType: "markdown", Markdown: &aibot.TextContent{Content: "test"}})
+			if !errors.Is(err, aibot.ErrProtocol) || result == nil || result.HTTPStatus != 200 || string(result.Raw) != body {
+				t.Fatalf("result=%+v err=%v", result, err)
+			}
+		})
+	}
+}

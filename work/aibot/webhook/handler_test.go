@@ -16,6 +16,33 @@ import (
 
 const testKey = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG"
 
+func TestHandlerRejectsTypedNil(t *testing.T) {
+	c, err := New(Config{Token: "token", EncodingAESKey: testKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cipher, err := corehook.NewMessageCipher(corehook.CipherConfig{EncodingAESKey: testKey, AllowEmptyReceiver: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encrypted, err := cipher.Encrypt([]byte(`{"msgtype":"text","text":{"content":"hello"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := url.Values{"timestamp": {"123"}, "nonce": {"nonce"}, "msg_signature": {corehook.MessageSignature("token", "123", "nonce", encrypted)}}
+	body, err := json.Marshal(map[string]string{"encrypt": encrypted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var next HandlerFunc
+	r := httptest.NewRequest(http.MethodPost, "/?"+query.Encode(), strings.NewReader(string(body)))
+	w := httptest.NewRecorder()
+	c.Handler(next).ServeHTTP(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d", w.Code)
+	}
+}
+
 func TestWebhookVerificationAndIncomingCallbacks(t *testing.T) {
 	c, err := New(Config{Token: "token", EncodingAESKey: testKey})
 	if err != nil {

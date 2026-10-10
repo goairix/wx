@@ -2,12 +2,85 @@ package websocket
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
 	"github.com/goairix/wx/v2/work/aibot"
 )
+
+func TestRawCardNumbersSurviveEveryPublicSendPath(t *testing.T) {
+	for _, mode := range []string{"send", "reply", "update"} {
+		t.Run(mode, func(t *testing.T) {
+			c, conn := newTestClient(t)
+			card := aibot.RawTemplateCard(`{"card_type":"button_interaction","task_id":"input-task","extension":{"opaque_id":9007199254740993,"nested":[9007199254740995,0,false],"huge":1e500}}`)
+			m := aibot.OutgoingMessage{MsgType: "template_card", TemplateCard: card}
+			var target *ReceivedCallback
+			if mode != "send" {
+				if mode == "update" {
+					conn.push(`{"cmd":"aibot_event_callback","headers":{"req_id":"callback"},"body":{"msgtype":"event","event":{"eventtype":"template_card_event","template_card_event":{"task_id":"original-task"}}}}`)
+				} else {
+					conn.push(`{"cmd":"aibot_msg_callback","headers":{"req_id":"callback"},"body":{"msgtype":"text"}}`)
+				}
+				for n := range c.Notifications() {
+					if n.Callback != nil {
+						target = n.Callback
+						break
+					}
+				}
+			}
+			done := make(chan error, 1)
+			go func() {
+				var err error
+				if mode == "send" {
+					_, err = c.Send(context.Background(), "chat", m)
+				} else {
+					_, err = c.Reply(context.Background(), target, &aibot.Reply{OutgoingMessage: m})
+				}
+				done <- err
+			}()
+			var frame Frame
+			select {
+			case b := <-conn.writes:
+				if err := json.Unmarshal(b, &frame); err != nil {
+					t.Fatal(err)
+				}
+			case err := <-done:
+				t.Fatalf("valid raw card rejected: %v", err)
+			case <-time.After(time.Second):
+				t.Fatal("no card written")
+			}
+			var body struct {
+				TemplateCard struct {
+					TaskID    string          `json:"task_id"`
+					Extension json.RawMessage `json:"extension"`
+				} `json:"template_card"`
+			}
+			if err := json.Unmarshal(frame.Body, &body); err != nil {
+				t.Fatal(err)
+			}
+			var extension map[string]json.RawMessage
+			if err := json.Unmarshal(body.TemplateCard.Extension, &extension); err != nil {
+				t.Fatal(err)
+			}
+			if string(extension["opaque_id"]) != "9007199254740993" || string(extension["nested"]) != "[9007199254740995,0,false]" || string(extension["huge"]) != "1e500" {
+				t.Fatalf("raw card changed: %s", frame.Body)
+			}
+			wantTask := "input-task"
+			if mode == "update" {
+				wantTask = "original-task"
+			}
+			if body.TemplateCard.TaskID != wantTask {
+				t.Fatalf("task_id = %q", body.TemplateCard.TaskID)
+			}
+			conn.ack(frame.Headers.ReqID, 0, nil)
+			if err := <-done; err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
 
 func TestReplyTargetSnapshotAndSessionIsolation(t *testing.T) {
 	c, s := newTestClient(t)
