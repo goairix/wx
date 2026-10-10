@@ -77,16 +77,26 @@ func (s *session) cause() error {
 
 var requestCounter atomic.Uint64
 
+// A canceled operation can invalidate a session whose lifecycle is still live.
+// Keep this provenance separate from cancellation of the lifecycle itself.
+type canceledRequestCause struct{ cause error }
+
+func (e *canceledRequestCause) Error() string { return "aibot in-flight request canceled" }
+func (e *canceledRequestCause) Unwrap() error { return e.cause }
+
+func requestFailureCause(ctx context.Context, err error) error {
+	if ctx.Err() == context.Canceled {
+		return &canceledRequestCause{cause: errors.Join(ctx.Err(), err)}
+	}
+	return err
+}
+
 func newRequestID() string {
 	var nonce [12]byte
 	if _, err := rand.Read(nonce[:]); err == nil {
 		return "wx_" + hex.EncodeToString(nonce[:])
 	}
 	return fmt.Sprintf("wx_%d_%d", time.Now().UnixNano(), requestCounter.Add(1))
-}
-func isRemoteError(err error) bool {
-	var e *coreerrors.Error
-	return errors.As(err, &e) && e.Code != ""
 }
 func (c *Client) request(ctx context.Context, command, reqID string, body any) (Frame, error) {
 	if ctx == nil {
@@ -294,7 +304,7 @@ func (s *session) request(ctx context.Context, command, reqID string, body any) 
 	writeCancel()
 	<-s.writer
 	if err != nil {
-		s.fail(errors.Join(ErrDisconnected, err))
+		s.fail(requestFailureCause(ctx, errors.Join(ErrDisconnected, err)))
 		return Frame{}, operationError(command, reqID, errors.Join(s.cause(), err))
 	}
 	s.owner.options.logger.Log(ctx, logging.LevelDebug, "work.aibot.request", logging.String("operation", command))
@@ -319,7 +329,7 @@ func (s *session) request(ctx context.Context, command, reqID string, body any) 
 		if s.ctx.Err() != nil {
 			return Frame{}, operationError(command, reqID, s.cause())
 		}
-		s.fail(ctx.Err())
+		s.fail(requestFailureCause(ctx, ctx.Err()))
 		return Frame{}, operationError(command, reqID, ctx.Err())
 	case <-s.ctx.Done():
 		return Frame{}, operationError(command, reqID, s.cause())

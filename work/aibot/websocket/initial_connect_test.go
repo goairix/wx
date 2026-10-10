@@ -117,7 +117,7 @@ func TestSubscribeBeforeWritePreservesTransportCauseOnSessionCancellation(t *tes
 	defer cancel()
 	s.fail(io.EOF)
 	_, err = s.request(ctx, CmdSubscribe, "subscribe", nil)
-	if !errors.Is(err, io.EOF) || !retryableInitialError(err) {
+	if !errors.Is(err, io.EOF) || !retryableConnectionError(err) {
 		t.Fatalf("pre-write failure lost transport cause: %v", err)
 	}
 }
@@ -161,8 +161,15 @@ func TestInitialConnectClassifiesPermanentFailures(t *testing.T) {
 		retry bool
 	}{
 		{"eof", io.EOF, true}, {"reset", syscall.ECONNRESET, true}, {"timeout", context.DeadlineExceeded, true},
+		{"closed transport", net.ErrClosed, true},
+		{"closed transport with protocol error", errors.Join(net.ErrClosed, ErrProtocol), false},
+		{"closed transport with certificate error", errors.Join(net.ErrClosed, &x509.UnknownAuthorityError{}), false},
+		{"closed transport with forbidden response", &coreerrors.Error{HTTPStatus: 403, Err: net.ErrClosed}, false},
 		{"unknown", errors.New("custom dial failure"), false}, {"disconnected only", ErrDisconnected, false},
 		{"joined protocol", errors.Join(io.EOF, ErrProtocol), false},
+		{"temporary DNS", &net.DNSError{Err: "server misbehaving", Name: "example.invalid", IsTemporary: true}, true},
+		{"permanent DNS", &net.DNSError{Err: "no such host", Name: "example.invalid", IsNotFound: true}, false},
+		{"joined canceled", errors.Join(io.EOF, context.Canceled), false},
 		{"certificate", &url.Error{Op: "Get", URL: "https://example.invalid", Err: x509.UnknownAuthorityError{}}, false},
 		{"joined certificate", errors.Join(io.EOF, x509.UnknownAuthorityError{}), false},
 		{"joined pointer authority", errors.Join(io.EOF, &x509.UnknownAuthorityError{}), false},

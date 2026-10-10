@@ -16,7 +16,11 @@ for notice := range client.Notifications() {
 
 默认地址 `wss://openws.work.weixin.qq.com`。Config 支持 URL、Dialer、心跳、通知容量、帧上限、分片大小、Reconnect、InitialConnect 和 Limiter；nil Reconnect 使用默认最多十次退避重连，MaxAttempts=0 禁用，-1 无限。心跳间隔 30 秒、ACK 超时 10 秒；退避由 1 秒至 30 秒。默认通知容量 1024、帧上限 4 MiB。被其他连接替换、认证拒绝或通知溢出终止生命周期。
 
-InitialConnect 为 nil 时保留首次只尝试一次的行为。显式配置后，首次拨号／订阅的暂时性网络故障、单次超时、HTTP 408/429/5xx 按该策略重试；认证拒绝、证书／协议错误、其他 HTTP 状态及未知自定义错误终止。MaxAttempts 表示首次尝试之外的重试次数；它和首次就绪后的 Reconnect 分别计数。错误可由 `errors.As` 检查 `*ConnectionError` 的 Phase、Retryable 和原始链，预算耗尽可由 `errors.Is(err, ErrRetryExhausted)` 判断。Retryable 不代表 SDK 尚在重试，不能据此另建无限外层重试绕过生命周期终止。
+InitialConnect 为 nil 时保留首次只尝试一次的行为，显式配置后按该策略恢复首次拨号／订阅失败；首次就绪后的恢复使用 Reconnect。两个阶段复用同一错误分类：可识别的暂时性网络故障（包括临时 DNS 故障）、单次超时、HTTP 408/429/5xx 按策略重试；认证拒绝、证书校验／协议错误、其他 HTTP 状态及未知自定义错误终止。WebSocket 正常关闭、离开、连接中断、服务重启、暂不可用及服务内部／网关错误可重试；协议／策略拒绝及未知关闭码终止。errors.Join 中的永久错误优先。
+
+错误通知及终止错误可由 `errors.As` 检查 `*ConnectionError` 的 Phase、Retryable 和原始链。PhaseDial 表示拨号失败，PhaseSubscribe 表示尚未成功订阅的连接失败，PhaseReceive 表示成功订阅后的连接故障（包括接收、心跳及交付不明的请求导致断线）；被替换的事件也保留 PhaseReceive 和 req_id。已开始写入的业务请求被调用方取消时，为避免延迟 ACK 错配会关闭该 session，但生命周期仍有效时按 Reconnect 重建连接且不重放请求，原请求错误保留 context.Canceled；并发接收先失败时，连接通知保留首次底层错误（例如 net.ErrClosed）。生命周期 context 取消始终终止客户端。原 HTTP 状态、errcode、操作名和底层错误链继续保留。
+
+MaxAttempts 表示可执行的重试次数；初次恢复和首次就绪后的 Reconnect 分别计数，每次重新就绪会重置重连预算。两种策略的预算耗尽均可由 `errors.Is(err, ErrRetryExhausted)` 判断，并保留最后一次 `ConnectionError` 及其原始原因；永久失败不附加耗尽标识。Reconnect.MaxAttempts=0 在临时断线后直接返回耗尽，不再拨号；InitialConnect 为 nil 的首次失败不属于启用的重试预算。Retryable 不代表 SDK 尚在重试，不能据此另建无限外层重试绕过生命周期终止。
 
 Connect 等订阅 ACK 后才成功；其 ctx 控制整个生命周期。及时消费 Notifications，业务处理交给项目工作队列；SDK 读循环不等待业务。Close 永久关闭并结束在途请求，重连不重放交付状态不明的写入。
 
