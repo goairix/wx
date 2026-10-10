@@ -423,9 +423,7 @@ func (s *session) heartbeat() {
 		case <-s.ctx.Done():
 			return
 		case <-ticker.C:
-			ctx, cancel := context.WithTimeout(s.ctx, s.owner.options.heartbeatTimeout)
-			_, err := s.request(ctx, CmdPing, newRequestID(), nil)
-			cancel()
+			_, err := s.request(s.ctx, CmdPing, newRequestID(), nil)
 			if err != nil {
 				s.fail(err)
 				return

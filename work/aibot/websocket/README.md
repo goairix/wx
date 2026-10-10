@@ -18,6 +18,8 @@ for notice := range client.Notifications() {
 
 Connect 等订阅 ACK 后才成功；其 ctx 控制整个生命周期。及时消费 Notifications，业务处理交给项目工作队列；SDK 读循环不等待业务。Close 永久关闭并结束在途请求，重连不重放交付状态不明的写入。
 
+心跳期限从 ping 取得写锁后开始，覆盖本次发送和 ACK 等待；排队期间仍响应生命周期取消，前面的业务写入受其自身请求期限限制。网络较慢时，可通过 `aibot.WithRequestTimeout` 调整素材分片等业务请求的期限。
+
 使用 `Reply(ctx, notice.Callback, &aibot.Reply{...})` 回复。ReceivedCallback 的回复目标私有绑定来源客户端、req_id 和连接代际；修改公开 Frame/Callback 不改变目标，旧连接的回调不能回复到新连接。SDK 自动选择欢迎语、普通回复或卡片更新，更新保留原 task_id。同 req_id 和 stream.id 串行化；已写入后取消或 ACK 超时会关闭连接以隔离迟到 ACK。
 
 `Send(ctx, chatID, aibot.OutgoingMessage)` 支持 Markdown、卡片及上传后的 image/voice/video/file；ChatType 为 0 自动、1 userid、2 群聊。长连接当前不支持流＋卡片和流式内嵌图片，本地返回 ErrUnsupported。流用全量 content 更新，十分钟内结束；欢迎／卡片更新五秒内回复，普通回复二十四小时内。平台发送限额每会话每分钟 30 次、每小时 1000 次，项目负责排队。

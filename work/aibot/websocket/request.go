@@ -236,6 +236,13 @@ func (s *session) request(ctx context.Context, command, reqID string, body any) 
 		<-s.writer
 		return Frame{}, operationError(command, reqID, ctx.Err())
 	}
+	if command == CmdPing {
+		// A ping cannot be overdue while still queued behind another valid
+		// write. Bound its own send and ACK only after acquiring the writer.
+		var pingCancel context.CancelFunc
+		ctx, pingCancel = context.WithTimeout(ctx, s.owner.options.heartbeatTimeout)
+		defer pingCancel()
+	}
 	writeCtx, writeCancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(s.ctx, writeCancel)
 	err = s.conn.Write(writeCtx, wire)
