@@ -53,6 +53,9 @@ func NewWithCaller(executor Caller, appID string, store cache.Cache) *Client {
 			if err != nil {
 				return auth.Credential{}, err
 			}
+			if result.Ticket == "" || result.ExpiresIn <= 0 {
+				return auth.Credential{}, fmt.Errorf("official jssdk: ticket and positive expires_in are required")
+			}
 			return auth.Credential{
 				AccessToken: result.Ticket,
 				ExpiresAt: time.Now().Add(

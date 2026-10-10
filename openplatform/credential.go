@@ -12,6 +12,7 @@ import (
 
 	"github.com/goairix/wx/v2/core/auth"
 	"github.com/goairix/wx/v2/core/request"
+	"github.com/goairix/wx/v2/internal/wechat"
 	"github.com/goairix/wx/v2/openplatform/internal/api"
 )
 
@@ -87,11 +88,6 @@ func (c *authorizerCredential) refresh(ctx context.Context) (auth.Credential, er
 		return auth.Credential{}, fmt.Errorf("openplatform authorizer: account is not authorized")
 	}
 
-	componentCredential, err := c.client.component.Token(ctx)
-	if err != nil {
-		return auth.Credential{}, err
-	}
-
 	var response struct {
 		api.ErrorFields
 		AccessToken  string `json:"authorizer_access_token"`
@@ -99,12 +95,11 @@ func (c *authorizerCredential) refresh(ctx context.Context) (auth.Credential, er
 		ExpiresIn    int64  `json:"expires_in"`
 	}
 	meta := new(request.ResponseMeta)
-	err = c.client.transport.Do(ctx, request.Request{
+	err := wechat.DoAuthenticated(ctx, c.client.component, c.client.transport, request.Request{
 		Operation: "openplatform.authorizer.token",
 		Platform:  "openplatform",
 		Method:    http.MethodPost,
 		Path:      "cgi-bin/component/api_authorizer_token",
-		Query:     mapValues("component_access_token", componentCredential.AccessToken),
 		Body: struct {
 			ComponentAppID  string `json:"component_appid"`
 			AuthorizerAppID string `json:"authorizer_appid"`
@@ -116,7 +111,7 @@ func (c *authorizerCredential) refresh(ctx context.Context) (auth.Credential, er
 		},
 		Result: &response,
 		Meta:   meta,
-	})
+	}, "component_access_token")
 	if err != nil {
 		return auth.Credential{}, err
 	}

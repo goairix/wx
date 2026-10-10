@@ -12,6 +12,7 @@ import (
 	"github.com/goairix/wx/v2/core/auth"
 	wxerrors "github.com/goairix/wx/v2/core/errors"
 	"github.com/goairix/wx/v2/core/request"
+	"github.com/goairix/wx/v2/internal/wechat"
 	"github.com/goairix/wx/v2/openplatform/internal/api"
 )
 
@@ -75,19 +76,13 @@ func (c *AuthorizerClient) Commit(
 
 // QRCode returns the experience-version QR code and its content type.
 func (c *AuthorizerClient) QRCode(ctx context.Context, path string) ([]byte, string, error) {
-	credential, err := c.credential.Token(ctx)
-	if err != nil {
-		return nil, "", err
-	}
-	query := url.Values{
-		"access_token": {credential.AccessToken},
-	}
+	query := make(url.Values)
 	if path != "" {
 		query.Set("path", path)
 	}
 	var body []byte
 	meta := new(request.ResponseMeta)
-	err = c.transport.Do(ctx, request.Request{
+	err := wechat.DoAuthenticated(ctx, c.credential, c.transport, request.Request{
 		Operation: "openplatform.code.qrcode",
 		Platform:  "openplatform",
 		Method:    http.MethodGet,
@@ -95,7 +90,7 @@ func (c *AuthorizerClient) QRCode(ctx context.Context, path string) ([]byte, str
 		Query:     query,
 		Result:    &body,
 		Meta:      meta,
-	})
+	}, "access_token")
 	if err != nil {
 		return nil, "", err
 	}
@@ -275,23 +270,16 @@ func (c *AuthorizerClient) doResult(
 	result interface{},
 	fields *api.ErrorFields,
 ) error {
-	credential, err := c.credential.Token(ctx)
-	if err != nil {
-		return err
-	}
 	meta := new(request.ResponseMeta)
-	err = c.transport.Do(ctx, request.Request{
+	err := wechat.DoAuthenticated(ctx, c.credential, c.transport, request.Request{
 		Operation: operation,
 		Platform:  "openplatform",
 		Method:    method,
 		Path:      path,
-		Query: url.Values{
-			"access_token": {credential.AccessToken},
-		},
-		Body:   body,
-		Result: result,
-		Meta:   meta,
-	})
+		Body:      body,
+		Result:    result,
+		Meta:      meta,
+	}, "access_token")
 	if err != nil {
 		return err
 	}
@@ -302,23 +290,16 @@ func (c *AuthorizerClient) status(
 	ctx context.Context, operation, method, path string, body interface{},
 ) (map[string]interface{}, error) {
 	result := make(map[string]interface{})
-	credential, err := c.credential.Token(ctx)
-	if err != nil {
-		return nil, err
-	}
 	meta := new(request.ResponseMeta)
-	err = c.transport.Do(ctx, request.Request{
+	err := wechat.DoAuthenticated(ctx, c.credential, c.transport, request.Request{
 		Operation: operation,
 		Platform:  "openplatform",
 		Method:    method,
 		Path:      path,
-		Query: url.Values{
-			"access_token": {credential.AccessToken},
-		},
-		Body:   body,
-		Result: &result,
-		Meta:   meta,
-	})
+		Body:      body,
+		Result:    &result,
+		Meta:      meta,
+	}, "access_token")
 	if err != nil {
 		return nil, err
 	}

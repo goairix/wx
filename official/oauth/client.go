@@ -9,6 +9,7 @@ import (
 	"github.com/goairix/wx/v2/core/auth"
 	wxerrors "github.com/goairix/wx/v2/core/errors"
 	"github.com/goairix/wx/v2/core/request"
+	"github.com/goairix/wx/v2/internal/wechat"
 )
 
 const authorizationEndpoint = "https://open.weixin.qq.com/connect/oauth2/authorize"
@@ -117,30 +118,24 @@ func (c *Client) componentTokenFromCode(
 	if c.componentCredential == nil {
 		return nil, fmt.Errorf("official oauth: component credential is required")
 	}
-	credential, err := c.componentCredential.Token(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("official oauth: get component credential: %w", err)
-	}
-
 	const operation = "official.oauth.component_token"
 	result := new(AccessTokenResponse)
 	meta := new(request.ResponseMeta)
-	err = c.transport.Do(ctx, request.Request{
+	err := wechat.DoAuthenticated(ctx, c.componentCredential, c.transport, request.Request{
 		Operation: operation,
 		RetryMode: request.RetryNever,
 		Platform:  "official",
 		Method:    http.MethodGet,
 		Path:      "sns/oauth2/component/access_token",
 		Query: url.Values{
-			"appid":                  {c.appID},
-			"code":                   {code},
-			"grant_type":             {"authorization_code"},
-			"component_appid":        {c.componentAppID},
-			"component_access_token": {credential.AccessToken},
+			"appid":           {c.appID},
+			"code":            {code},
+			"grant_type":      {"authorization_code"},
+			"component_appid": {c.componentAppID},
 		},
 		Result: result,
 		Meta:   meta,
-	})
+	}, "component_access_token")
 	if err != nil {
 		return nil, err
 	}

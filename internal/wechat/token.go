@@ -16,7 +16,7 @@ import (
 // must return false after attempting a destination write. Credential failures
 // and unrelated platform errors are never replayed. The caller's context is used
 // unchanged for invalidation and refresh, including external persistence hooks.
-func DoWithToken(ctx context.Context, manager *auth.Manager, platform, operation string, send func(auth.Credential) (bool, error)) error {
+func DoWithToken(ctx context.Context, manager auth.Provider, platform, operation string, send func(auth.Credential) (bool, error)) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -29,7 +29,14 @@ func DoWithToken(ctx context.Context, manager *auth.Manager, platform, operation
 		if !replayable || credential.AccessToken == "" || !isTokenRejection(platform, operation, sendErr) {
 			return sendErr
 		}
-		if invalidateErr := manager.Invalidate(ctx, credential.AccessToken); invalidateErr != nil {
+		invalidator, ok := manager.(interface {
+			Invalidate(context.Context, string) error
+		})
+		if !ok {
+			// External providers may own their complete credential lifecycle.
+			return sendErr
+		}
+		if invalidateErr := invalidator.Invalidate(ctx, credential.AccessToken); invalidateErr != nil {
 			return fmt.Errorf("invalidate rejected %s credential: %w", platform, invalidateErr)
 		}
 		if attempt == 1 {
@@ -49,7 +56,13 @@ func isTokenRejection(platform, operation string, err error) bool {
 	}
 	switch platform {
 	case "official":
-		return platformErr.Code == "40001" || platformErr.Code == "42001"
+		return platformErr.Code == "40001" || platformErr.Code == "42001" ||
+			operation == "official.oauth.component_token" && platformErr.Code == "40014"
+	case "miniapp", "openplatform":
+		return platformErr.Code == "40001" || platformErr.Code == "40014" || platformErr.Code == "42001"
+	case "mobileapp":
+		return operation == "mobileapp.oauth.userinfo" &&
+			(platformErr.Code == "40001" || platformErr.Code == "40014" || platformErr.Code == "42001")
 	case "work":
 		return platformErr.Code == "40014" || platformErr.Code == "42001"
 	default:

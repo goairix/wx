@@ -9,6 +9,7 @@ import (
 
 	"github.com/goairix/wx/v2/core/auth"
 	"github.com/goairix/wx/v2/core/request"
+	"github.com/goairix/wx/v2/internal/wechat"
 	"github.com/goairix/wx/v2/openplatform/internal/api"
 )
 
@@ -53,24 +54,16 @@ type PreAuthCode struct {
 
 // PreAuthorizationCode creates a pre-authorization code.
 func (c *Client) PreAuthorizationCode(ctx context.Context) (*PreAuthCode, error) {
-	credential, err := c.credential.Token(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	var response struct {
 		api.ErrorFields
 		PreAuthCode
 	}
 	meta := new(request.ResponseMeta)
-	err = c.transport.Do(ctx, request.Request{
+	err := wechat.DoAuthenticated(ctx, c.credential, c.transport, request.Request{
 		Operation: "openplatform.authorizer.pre_auth_code",
 		Platform:  "openplatform",
 		Method:    http.MethodPost,
 		Path:      "cgi-bin/component/api_create_preauthcode",
-		Query: url.Values{
-			"component_access_token": {credential.AccessToken},
-		},
 		Body: struct {
 			ComponentAppID string `json:"component_appid"`
 		}{
@@ -78,7 +71,7 @@ func (c *Client) PreAuthorizationCode(ctx context.Context) (*PreAuthCode, error)
 		},
 		Result: &response,
 		Meta:   meta,
-	})
+	}, "component_access_token")
 	if err != nil {
 		return nil, err
 	}
@@ -138,24 +131,16 @@ func (c *Client) AuthorizationInfo(
 	ctx context.Context,
 	authorizationCode string,
 ) (*AuthorizationInfo, error) {
-	credential, err := c.credential.Token(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	var response struct {
 		api.ErrorFields
 		AuthorizationInfo AuthorizationInfo `json:"authorization_info"`
 	}
 	meta := new(request.ResponseMeta)
-	err = c.transport.Do(ctx, request.Request{
+	err := wechat.DoAuthenticated(ctx, c.credential, c.transport, request.Request{
 		Operation: "openplatform.authorizer.authorization_info",
 		Platform:  "openplatform",
 		Method:    http.MethodPost,
 		Path:      "cgi-bin/component/api_query_auth",
-		Query: url.Values{
-			"component_access_token": {credential.AccessToken},
-		},
 		Body: struct {
 			ComponentAppID    string `json:"component_appid"`
 			AuthorizationCode string `json:"authorization_code"`
@@ -165,7 +150,7 @@ func (c *Client) AuthorizationInfo(
 		},
 		Result: &response,
 		Meta:   meta,
-	})
+	}, "component_access_token")
 	if err != nil {
 		return nil, err
 	}
@@ -181,21 +166,13 @@ func (c *Client) AuthorizationInfo(
 
 // Info fetches metadata for an authorized account.
 func (c *Client) Info(ctx context.Context, authorizerAppID string) (*Info, error) {
-	credential, err := c.credential.Token(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	response := new(Info)
 	meta := new(request.ResponseMeta)
-	err = c.transport.Do(ctx, request.Request{
+	err := wechat.DoAuthenticated(ctx, c.credential, c.transport, request.Request{
 		Operation: "openplatform.authorizer.info",
 		Platform:  "openplatform",
 		Method:    http.MethodPost,
 		Path:      "cgi-bin/component/api_get_authorizer_info",
-		Query: url.Values{
-			"component_access_token": {credential.AccessToken},
-		},
 		Body: struct {
 			ComponentAppID  string `json:"component_appid"`
 			AuthorizerAppID string `json:"authorizer_appid"`
@@ -205,7 +182,7 @@ func (c *Client) Info(ctx context.Context, authorizerAppID string) (*Info, error
 		},
 		Result: response,
 		Meta:   meta,
-	})
+	}, "component_access_token")
 	if err != nil {
 		return nil, err
 	}

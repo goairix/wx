@@ -65,6 +65,14 @@ credential, err := client.Component().Token(ctx)
 组件 token 与授权方 token 使用不同的缓存命名空间。缓存 key 使用凭证身份摘要，
 不会写入 AppSecret 或 authorizer refresh token 明文。
 
+组件 token 被接口以 `40001`、`40014` 或 `42001` 拒绝时，SDK 会条件失效本次使用的
+token，重新获取并仅重试当前操作一次。此策略覆盖账号授权、代码模板、授权方凭据刷新，
+以及授权公众号的 component OAuth。代码管理和体验码下载采用同样策略处理授权方 token。
+组件与授权方的缓存分别处理；刷新、失效和仓库持久化都沿用原始 context。
+一次性 code 的网络失败不会自动重放，只有明确的 token 拒绝才触发凭据恢复。
+直接给领域客户端注入自管 provider 时，可同时实现 `Invalidate(ctx, token)` 参与恢复；
+仅实现 `Token(ctx)` 的 provider 保持单次调用。
+
 微信可能在刷新授权方 access token 时返回新的 refresh token。客户端会立即在进程内切换到新 token。
 生产环境应通过 `WithRefreshTokenStore` 持久化它，供进程重启后继续使用：
 

@@ -71,6 +71,11 @@ func (c *Client) Token(ctx context.Context) (auth.Credential, error) {
 	return c.manager.Token(ctx)
 }
 
+// Invalidate clears the rejected component token only if it is still cached.
+func (c *Client) Invalidate(ctx context.Context, token string) error {
+	return c.manager.Invalidate(ctx, token)
+}
+
 func (c *Client) fetchToken(ctx context.Context) (auth.Credential, error) {
 	ticket, ok, err := c.VerifyTicket(ctx)
 	if err != nil {

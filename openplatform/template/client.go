@@ -9,6 +9,7 @@ import (
 
 	"github.com/goairix/wx/v2/core/auth"
 	"github.com/goairix/wx/v2/core/request"
+	"github.com/goairix/wx/v2/internal/wechat"
 	"github.com/goairix/wx/v2/openplatform/internal/api"
 )
 
@@ -160,16 +161,8 @@ func (c *Client) do(
 	result interface{},
 	fields *api.ErrorFields,
 ) error {
-	credential, err := c.credential.Token(ctx)
-	if err != nil {
-		return err
-	}
-	if query == nil {
-		query = make(url.Values)
-	}
-	query.Set("access_token", credential.AccessToken)
 	meta := new(request.ResponseMeta)
-	err = c.transport.Do(ctx, request.Request{
+	err := wechat.DoAuthenticated(ctx, c.credential, c.transport, request.Request{
 		Operation: operation,
 		Platform:  "openplatform",
 		Method:    method,
@@ -178,7 +171,7 @@ func (c *Client) do(
 		Body:      body,
 		Result:    result,
 		Meta:      meta,
-	})
+	}, "access_token")
 	if err != nil {
 		return err
 	}

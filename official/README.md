@@ -73,6 +73,8 @@ user, err := client.OAuth().UserFromCode(ctx, code)
 流式下载都使用此策略；流式下载一旦尝试向目标写入，就不会重放。其他错误直接返回。
 重试使用原始 context，授权公众号也会通过现有的 authorizer refresh token 流程刷新。
 此策略不适用于网页 OAuth 用户 token。
+开放平台代公众号交换 OAuth code 时，SDK 会单独处理 component token 的
+`40001`、`40014`、`42001` 拒绝；网络错误和 code 错误仍直接返回。
 
 平台错误统一返回 `*core/errors.Error`：
 
