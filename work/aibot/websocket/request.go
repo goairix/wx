@@ -105,11 +105,21 @@ func (c *Client) request(ctx context.Context, command, reqID string, body any) (
 	s := bound.Value(sessionContextKey{}).(*session)
 	deadline, cancel := context.WithTimeout(bound, c.options.requestTimeout)
 	defer cancel()
-	frame, err := c.withKey(deadline, "request:"+reqID, func() (Frame, error) {
-		return s.request(deadline, command, reqID, body)
+	policy := policyFromContext(deadline)
+	sendCtx, sendCancel := makeSendContext(deadline, s, policy)
+	defer sendCancel()
+	controlled := context.WithValue(deadline, requestControlKey{}, &requestControl{sendContext: sendCtx, policy: policy})
+	frame, err := c.withKey(sendCtx, "request:"+reqID, func() (Frame, error) {
+		if admissionErr := c.admit(sendCtx, deadline, s, command, reqID, policy); admissionErr != nil {
+			return Frame{}, operationError(command, reqID, admissionErr)
+		}
+		return s.request(controlled, command, reqID, body)
 	})
 	var queueError *coreerrors.Error
 	if errors.As(err, &queueError) && queueError.Operation == "work.aibot.websocket.queue" {
+		if sendCtx.Err() != nil {
+			err = sendContextCause(sendCtx, deadline, s, policy)
+		}
 		return frame, operationError(command, reqID, err)
 	}
 	return frame, err
@@ -190,6 +200,20 @@ func (c *Client) withKey(ctx context.Context, key string, fn func() (Frame, erro
 	return fn()
 }
 func (s *session) request(ctx context.Context, command, reqID string, body any) (Frame, error) {
+	sendCtx := ctx
+	var policy *sendPolicy
+	if control, _ := ctx.Value(requestControlKey{}).(*requestControl); control != nil {
+		sendCtx = control.sendContext
+		policy = control.policy
+	}
+	if policy != nil {
+		if policyErr := policy.check(); policyErr != nil {
+			return Frame{}, operationError(command, reqID, policyErr)
+		}
+	}
+	if sendCtx.Err() != nil {
+		return Frame{}, operationError(command, reqID, sendContextCause(sendCtx, ctx, s, policy))
+	}
 	var rawBody json.RawMessage
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -227,23 +251,43 @@ func (s *session) request(ctx context.Context, command, reqID string, body any) 
 	}()
 	select {
 	case s.writer <- struct{}{}:
-	case <-ctx.Done():
-		return Frame{}, operationError(command, reqID, ctx.Err())
+	case <-sendCtx.Done():
+		return Frame{}, operationError(command, reqID, sendContextCause(sendCtx, ctx, s, policy))
 	case <-s.ctx.Done():
 		return Frame{}, operationError(command, reqID, s.cause())
 	}
-	if ctx.Err() != nil {
+	if sendCtx.Err() != nil {
 		<-s.writer
-		return Frame{}, operationError(command, reqID, ctx.Err())
+		return Frame{}, operationError(command, reqID, sendContextCause(sendCtx, ctx, s, policy))
+	}
+	if s.ctx.Err() != nil {
+		<-s.writer
+		return Frame{}, operationError(command, reqID, s.cause())
+	}
+	if policy != nil {
+		if policyErr := policy.check(); policyErr != nil {
+			<-s.writer
+			return Frame{}, operationError(command, reqID, policyErr)
+		}
 	}
 	if command == CmdPing {
 		// A ping cannot be overdue while still queued behind another valid
 		// write. Bound its own send and ACK only after acquiring the writer.
 		var pingCancel context.CancelFunc
 		ctx, pingCancel = context.WithTimeout(ctx, s.owner.options.heartbeatTimeout)
+		sendCtx = ctx
 		defer pingCancel()
 	}
-	writeCtx, writeCancel := context.WithCancel(ctx)
+	var writeCtx context.Context
+	var writeCancel context.CancelFunc
+	if policy != nil {
+		policy.beforeWrite(time.Now())
+		// The first stream acquires its ten-minute window only now. Recompute
+		// the Write deadline while keeping the original context for its ACK.
+		writeCtx, writeCancel = context.WithDeadline(sendCtx, policy.deadline())
+	} else {
+		writeCtx, writeCancel = context.WithCancel(sendCtx)
+	}
 	stop := context.AfterFunc(s.ctx, writeCancel)
 	err = s.conn.Write(writeCtx, wire)
 	stop()
@@ -263,10 +307,18 @@ func (s *session) request(ctx context.Context, command, reqID string, body any) 
 			// Server text is retained in the returned error but is never logged.
 			return ack, &coreerrors.Error{Platform: "work", Operation: "work.aibot.websocket." + command, RequestID: reqID, Code: strconv.Itoa(*ack.ErrCode), Message: ack.ErrMsg}
 		}
+		if policy != nil {
+			policy.afterACK()
+		}
 		return ack, nil
 	case <-ctx.Done():
 		// No protocol sequence number exists for reused reply req_id. Stop this
 		// connection so a delayed ACK cannot acknowledge the next reply.
+		// A subscription context inherits session cancellation. Keep its actual
+		// transport failure instead of replacing it with context.Canceled.
+		if s.ctx.Err() != nil {
+			return Frame{}, operationError(command, reqID, s.cause())
+		}
 		s.fail(ctx.Err())
 		return Frame{}, operationError(command, reqID, ctx.Err())
 	case <-s.ctx.Done():

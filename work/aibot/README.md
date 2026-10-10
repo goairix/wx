@@ -15,6 +15,10 @@
 
 `Callback.Raw` 保留回调明文及未知字段。`TemplateCard` 覆盖 text_notice、news_notice、button_interaction、vote_interaction、multiple_interaction 的全部字段，含反馈、type=3 智能问答跳转与显式 false 的选项；未来字段通过 `RawTemplateCard` 原始 JSON 扩展。
 
+消息、Event、Quote 和 Mixed 直接复用公共模型，项目仅保留领域转换。`DownloadContent.Filename` 保留可选的回调文件名；`DownloadedMedia.HeaderFilename` 仅表示有效的 Content-Disposition 名称，没有响应头名称时为空。既有 Filename 仍按响应头、URL、`media` 回退，因此项目可按 HeaderFilename → 回调 Filename → Filename 选择业务文件名，删除自定义响应头 Transport。新增字段的结构体应使用命名字段初始化。
+
+上传预检可独立调用 `ValidateUploadMedia(type, filename, data)`，`UploadMediaLimits(type)` 返回 MinBytes、MaxBytes 和调用方拥有的 Formats；WebSocket 高层上传自动复用它。PNG/JPEG/GIF、AMR 和 MP4 做内容头部／容器检查，文件大小和文件名有统一校验；普通文件不限格式。资源下载限制、链接降级和附件类型的业务选择继续由项目负责。
+
 `NewMedia` 的 `Download(ctx, MediaSource)` 要求独立 AESKey，使用 AES-256-CBC 解密；`DownloadRaw` 明确返回原始数据。Webhook 的 `Download` 以回调 EncodingAESKey 为默认密钥。返回文件内容、安全文件名及 ContentType，调用方决定保存位置。流图片助手 `NewStreamImage` 生成 Base64 和原始数据 MD5，支持 JPG/PNG；最多十张、每张 10 MiB，只在 finish=true 出现。流内容为全量快照，UTF-8 上限 20480 字节。
 
 SDK 处理协议、连接和媒体；项目负责多副本连接租约、去重、Agent 调用、会话持久化、流快照、卡片只发送一次、附件降级及业务幂等。错误可通过 `errors.Is/As` 检查，并保留平台码、操作、请求标识和底层链；SDK 日志不输出凭据、消息原文或敏感 URL。

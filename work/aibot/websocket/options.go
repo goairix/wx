@@ -18,9 +18,14 @@ type Config struct {
 	Dialer                              Dialer
 	HeartbeatInterval, HeartbeatTimeout time.Duration
 	Reconnect                           *ReconnectPolicy
-	NotificationBuffer                  int
-	MaxFrameBytes                       int64
-	ChunkSize                           int
+	// InitialConnect optionally retries transient failures before first readiness.
+	// nil preserves one initial attempt; its budget is independent of Reconnect.
+	InitialConnect *ReconnectPolicy
+	// Limiter is optional; nil leaves platform quota enforcement to the server.
+	Limiter            Limiter
+	NotificationBuffer int
+	MaxFrameBytes      int64
+	ChunkSize          int
 }
 
 // Connection reads/writes complete JSON messages. Methods must honor context;
@@ -39,8 +44,8 @@ type DialerFunc func(context.Context, string) (Connection, error)
 
 func (f DialerFunc) Dial(ctx context.Context, url string) (Connection, error) { return f(ctx, url) }
 
-// ReconnectPolicy applies only after the first successful subscription.
-// MaxAttempts is -1 for unlimited retries and 0 disables reconnection.
+// ReconnectPolicy configures either Config.InitialConnect or Config.Reconnect.
+// MaxAttempts counts retries after the first attempt: -1 is unlimited, 0 disables.
 type ReconnectPolicy struct {
 	InitialDelay time.Duration
 	MaxDelay     time.Duration
@@ -54,6 +59,8 @@ type options struct {
 	logger                                              logging.Logger
 	heartbeatInterval, heartbeatTimeout, requestTimeout time.Duration
 	reconnect                                           ReconnectPolicy
+	initialConnect                                      *ReconnectPolicy
+	limiter                                             Limiter
 	notificationBuffer                                  int
 	maxFrameBytes                                       int64
 	downloadLimit, uploadLimit                          int64

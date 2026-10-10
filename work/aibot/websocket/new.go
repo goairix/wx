@@ -33,6 +33,19 @@ func New(cfg Config, opts ...aibot.Option) (*Client, error) {
 	if cfg.Reconnect != nil {
 		o.reconnect = *cfg.Reconnect
 	}
+	if cfg.InitialConnect != nil {
+		p := *cfg.InitialConnect
+		if !validReconnectPolicy(p) {
+			return nil, aibot.WrapError("websocket.new", "", aibot.ErrInvalidArgument)
+		}
+		o.initialConnect = &p
+	}
+	if cfg.Limiter != nil {
+		if settings.IsNil(cfg.Limiter) {
+			return nil, aibot.WrapError("websocket.new", "", aibot.ErrInvalidArgument)
+		}
+		o.limiter = cfg.Limiter
+	}
 	if cfg.NotificationBuffer != 0 {
 		o.notificationBuffer = cfg.NotificationBuffer
 	}

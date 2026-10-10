@@ -32,17 +32,11 @@ type UploadFinishRequest struct {
 }
 
 func (c *Client) InitUpload(ctx context.Context, r UploadInitRequest) (*UploadInitResult, error) {
-	limit := int64(0)
-	switch r.Type {
-	case "image", "video":
-		limit = 10 << 20
-	case "voice":
-		limit = 2 << 20
-	case "file":
-		limit = 20 << 20
+	limits, limitsErr := aibot.UploadMediaLimits(r.Type)
+	if limitsErr != nil || r.Filename == "" || len(r.Filename) > 256 || !utf8.ValidString(r.Filename) || r.TotalSize < limits.MinBytes || r.TotalSize > min(limits.MaxBytes, c.options.uploadLimit) || r.TotalChunks < 1 || r.TotalChunks > 100 || r.TotalSize > int64(r.TotalChunks)*(512<<10) || len(r.MD5) != 32 {
+		return nil, operationError(CmdUploadInit, "", ErrInvalidArgument)
 	}
-	digest, err := hex.DecodeString(r.MD5)
-	if limit == 0 || r.Filename == "" || len(r.Filename) > 256 || !utf8.ValidString(r.Filename) || r.TotalSize < 5 || r.TotalSize > limit || r.TotalChunks < 1 || r.TotalChunks > 100 || r.TotalSize > int64(r.TotalChunks)*(512<<10) || err != nil || len(digest) != 16 {
+	if _, err := hex.DecodeString(r.MD5); err != nil {
 		return nil, operationError(CmdUploadInit, "", ErrInvalidArgument)
 	}
 	f, err := c.request(ctx, CmdUploadInit, "", r)

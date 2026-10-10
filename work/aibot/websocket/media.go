@@ -11,6 +11,8 @@ import (
 	"math"
 	"strconv"
 	"unicode/utf8"
+
+	"github.com/goairix/wx/v2/work/aibot"
 )
 
 // UploadResult identifies temporary media, valid for three days.
@@ -61,24 +63,17 @@ func (c *Client) uploadMedia(ctx context.Context, mediaType, filename string, da
 	if ctx == nil || data == nil || filename == "" || len(filename) > 256 || !utf8.ValidString(filename) {
 		return fail(ErrInvalidArgument)
 	}
-	var platformLimit int64
-	switch mediaType {
-	case "image", "video":
-		platformLimit = 10 << 20
-	case "voice":
-		platformLimit = 2 << 20
-	case "file":
-		platformLimit = 20 << 20
-	default:
-		return fail(ErrInvalidArgument)
+	limits, limitErr := aibot.UploadMediaLimits(mediaType)
+	if limitErr != nil {
+		return fail(limitErr)
 	}
-	limit := min(c.options.uploadLimit, platformLimit, int64(c.options.chunkSize)*100)
+	limit := min(c.options.uploadLimit, limits.MaxBytes, int64(c.options.chunkSize)*100)
 	content, err := readMedia(ctx, data, limit)
 	if err != nil {
 		return fail(err)
 	}
-	if len(content) < 5 {
-		return fail(ErrInvalidArgument)
+	if err = aibot.ValidateUploadMedia(mediaType, filename, content); err != nil {
+		return fail(err)
 	}
 	digest := md5.Sum(content) // #nosec G401 -- checksum required by the protocol.
 	totalChunks := (len(content) + c.options.chunkSize - 1) / c.options.chunkSize

@@ -23,6 +23,21 @@ func TestNewRejectsTypedNilDialer(t *testing.T) {
 	}
 }
 
+func TestNewRejectsTypedNilLimiterAndInvalidInitialPolicy(t *testing.T) {
+	var limiter *recordingLimiter
+	var fn LimiterFunc
+	for _, l := range []Limiter{limiter, fn} {
+		if _, err := New(Config{BotID: "b", Secret: "s", Limiter: l}); !errors.Is(err, ErrInvalidArgument) {
+			t.Fatal(err)
+		}
+	}
+	for _, p := range []ReconnectPolicy{{}, {InitialDelay: time.Second, MaxDelay: time.Millisecond}, {InitialDelay: time.Second, MaxDelay: time.Second, MaxAttempts: -2}} {
+		if _, err := New(Config{BotID: "b", Secret: "s", InitialConnect: &p}); !errors.Is(err, ErrInvalidArgument) {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestDialerTypedNilConnectionReturnsProtocolError(t *testing.T) {
 	for _, dialErr := range []error{nil, errors.New("dial failed")} {
 		t.Run("connection", func(t *testing.T) {

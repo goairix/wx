@@ -16,6 +16,8 @@ type TextContent struct {
 type DownloadContent struct {
 	URL    string `json:"url"`
 	AESKey string `json:"aeskey,omitempty"`
+	// Filename preserves optional callback metadata without replacing HTTP names.
+	Filename string `json:"filename,omitempty"`
 }
 
 // VoiceContent contains the speech-to-text result of an incoming voice message.

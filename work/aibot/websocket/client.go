@@ -189,6 +189,9 @@ func (c *Client) run(ctx context.Context, first chan<- error) {
 	authenticated := false
 	attempt := 0
 	delay := c.options.reconnect.InitialDelay
+	if c.options.initialConnect != nil {
+		delay = c.options.initialConnect.InitialDelay
+	}
 	for {
 		if err := ctx.Err(); err != nil {
 			c.mu.Lock()
@@ -209,6 +212,10 @@ func (c *Client) run(ctx context.Context, first chan<- error) {
 			return
 		}
 		if attempt > 0 {
+			policy := c.options.reconnect
+			if !authenticated && c.options.initialConnect != nil {
+				policy = *c.options.initialConnect
+			}
 			if !c.transition(ctx, StateReconnecting, attempt, nil) {
 				terminal = operationError("receive", "", ErrNotificationOverflow)
 				return
@@ -220,10 +227,11 @@ func (c *Client) run(ctx context.Context, first chan<- error) {
 				continue
 			case <-timer.C:
 			}
-			if delay < c.options.reconnect.MaxDelay {
-				delay *= 2
-				if delay > c.options.reconnect.MaxDelay {
-					delay = c.options.reconnect.MaxDelay
+			if delay < policy.MaxDelay {
+				if delay >= policy.MaxDelay-delay {
+					delay = policy.MaxDelay
+				} else {
+					delay *= 2
 				}
 			}
 		} else {
@@ -242,7 +250,9 @@ func (c *Client) run(ctx context.Context, first chan<- error) {
 			err = ErrProtocol
 		}
 		authRejected := false
+		phase := PhaseDial
 		if err == nil {
+			phase = PhaseSubscribe
 			s := newSession(ctx, conn, c)
 			c.mu.Lock()
 			c.session = s
@@ -305,13 +315,26 @@ func (c *Client) run(ctx context.Context, first chan<- error) {
 				return
 			}
 			if authRejected {
-				terminal = err
+				terminal = connectionError(phase, err)
 				return
 			}
 		}
 		if !authenticated {
-			terminal = operationError("connect", "", err)
-			return
+			if ctx.Err() != nil {
+				continue
+			}
+			classified := connectionError(phase, err)
+			if c.options.initialConnect == nil || !retryableInitialError(err) {
+				terminal = classified
+				return
+			}
+			attempt++
+			if c.options.initialConnect.MaxAttempts >= 0 && attempt > c.options.initialConnect.MaxAttempts {
+				terminal = operationError("connect", "", errors.Join(ErrRetryExhausted, classified))
+				return
+			}
+			c.notify(Notification{Err: classified})
+			continue
 		}
 		if ctx.Err() != nil {
 			continue
@@ -327,6 +350,7 @@ func (c *Client) run(ctx context.Context, first chan<- error) {
 func (s *session) readLoop() {
 	for {
 		b, err := s.conn.Read(s.ctx)
+		receivedAt := time.Now()
 		if err != nil {
 			s.fail(errors.Join(ErrDisconnected, err))
 			return
@@ -348,7 +372,7 @@ func (s *session) readLoop() {
 				s.fail(errors.Join(ErrProtocol, err))
 				return
 			}
-			target, err := s.received(frame)
+			target, err := s.received(frame, receivedAt)
 			if err != nil {
 				s.fail(err)
 				return
@@ -368,7 +392,7 @@ func (s *session) readLoop() {
 				s.fail(ErrReplaced)
 				return
 			}
-			target, err := s.received(frame)
+			target, err := s.received(frame, receivedAt)
 			if err != nil {
 				s.fail(err)
 				return

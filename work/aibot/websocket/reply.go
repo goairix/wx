@@ -165,8 +165,15 @@ func (c *Client) replyBody(ctx context.Context, command, reqID string, body Mess
 	started := false
 	request := func() (Frame, error) { started = true; return c.request(deadline, command, reqID, body) }
 	if body.Stream != nil {
-		frame, err := c.withKey(deadline, "stream:"+body.Stream.ID, request)
+		s := bound.Value(sessionContextKey{}).(*session)
+		policy := policyFromContext(deadline)
+		sendCtx, sendCancel := makeSendContext(deadline, s, policy)
+		defer sendCancel()
+		frame, err := c.withKey(sendCtx, "stream:"+body.Stream.ID, request)
 		if err != nil && !started {
+			if sendCtx.Err() != nil {
+				err = sendContextCause(sendCtx, deadline, s, policy)
+			}
 			return frame, operationError(command, reqID, err)
 		}
 		return frame, err

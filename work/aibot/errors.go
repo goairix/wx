@@ -17,6 +17,9 @@ var (
 	ErrUnsupported          = errors.New("unsupported aibot operation")
 	ErrInvalidTarget        = errors.New("invalid aibot reply target")
 	ErrBodyTooLarge         = errors.New("aibot body too large")
+	ErrReplyExpired         = errors.New("aibot reply deadline expired")
+	ErrStreamFinished       = errors.New("aibot stream already finished")
+	ErrStreamExpired        = errors.New("aibot stream deadline expired")
 )
 
 func WrapError(operation, requestID string, cause error) error {

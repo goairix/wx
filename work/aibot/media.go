@@ -26,6 +26,8 @@ type MediaSource struct{ URL, AESKey string }
 type DownloadedMedia struct {
 	Data                  []byte
 	Filename, ContentType string
+	// HeaderFilename is empty when no valid Content-Disposition filename exists.
+	HeaderFilename string
 }
 type MediaClient struct{ shared settings.Settings }
 
@@ -89,13 +91,14 @@ func (c *MediaClient) download(ctx context.Context, mediaURL, aesKey string, raw
 	if _, p, err := mime.ParseMediaType(response.Header.Get("Content-Disposition")); err == nil {
 		filename = safeMediaFilename(p["filename"])
 	}
+	headerFilename := filename
 	if filename == "" {
 		filename = safeMediaFilename(request.URL.Path)
 	}
 	if filename == "" {
 		filename = "media"
 	}
-	return &DownloadedMedia{Data: data, Filename: filename, ContentType: response.Header.Get("Content-Type")}, nil
+	return &DownloadedMedia{Data: data, Filename: filename, HeaderFilename: headerFilename, ContentType: response.Header.Get("Content-Type")}, nil
 }
 func NewStreamImage(data []byte) (StreamImage, error) {
 	if len(data) > 10<<20 || !isImage(data) {
