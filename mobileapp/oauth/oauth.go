@@ -184,9 +184,24 @@ func (c *Client) UserFromCode(ctx context.Context, code string) (*UserInfo, erro
 // refreshLifetime binds an expiry to its issuance, so a partially failed
 // reauthorization cannot assign a new lifetime to an older cached token.
 type refreshLifetime struct {
-	RefreshToken         string    `json:"refresh_token"`
-	PreviousRefreshToken string    `json:"previous_refresh_token,omitempty"`
-	ExpiresAt            time.Time `json:"expires_at"`
+	RefreshToken         string     `json:"refresh_token"`
+	PreviousRefreshToken string     `json:"previous_refresh_token,omitempty"`
+	ExpiresAt            time.Time  `json:"expires_at"`
+	PreviousExpiresAt    *time.Time `json:"previous_expires_at,omitempty"`
+}
+
+func (l refreshLifetime) expiryFor(token string) time.Time {
+	if token == l.RefreshToken {
+		return l.ExpiresAt
+	}
+	if token == l.PreviousRefreshToken {
+		if l.PreviousExpiresAt != nil {
+			return *l.PreviousExpiresAt
+		}
+		// Earlier rotation metadata used one deadline for both token bindings.
+		return l.ExpiresAt
+	}
+	return time.Time{}
 }
 
 // accessCache adapts the existing raw access-token cache, retaining one source
@@ -244,13 +259,16 @@ func (c *Client) tokenManager(openid string) *auth.Manager {
 			}
 			var lifetime refreshLifetime
 			parseErr := json.Unmarshal([]byte(raw), &lifetime)
-			if !ok || parseErr != nil || (lifetime.RefreshToken != refresh && lifetime.PreviousRefreshToken != refresh) || !lifetime.ExpiresAt.After(time.Now()) {
+			expiresAt := lifetime.expiryFor(refresh)
+			if !ok || parseErr != nil || !expiresAt.After(time.Now()) {
 				return auth.Credential{}, fmt.Errorf("mobileapp: refresh token expiry unknown or expired; reauthorization required")
 			}
 			// Preserve both sides of this rotation until the raw token write succeeds.
 			// If it fails, the old token still has its original expiry metadata.
-			lifetime.PreviousRefreshToken = refresh
-			lifetime.RefreshToken = out.RefreshToken
+			lifetime = refreshLifetime{
+				RefreshToken: out.RefreshToken, ExpiresAt: expiresAt,
+				PreviousRefreshToken: refresh, PreviousExpiresAt: &expiresAt,
+			}
 			encoded, err := json.Marshal(lifetime)
 			if err != nil {
 				return auth.Credential{}, err
@@ -272,19 +290,45 @@ func (c *Client) accessToken(ctx context.Context, openid string) (string, error)
 }
 
 func (c *Client) store(ctx context.Context, out AccessToken) error {
+	_, err := c.tokenManager(out.OpenID).Update(ctx, auth.ProviderFunc(func(ctx context.Context) (auth.Credential, error) {
+		if err := c.storeRefresh(ctx, out); err != nil {
+			return auth.Credential{}, err
+		}
+		return auth.Credential{AccessToken: out.AccessToken, ExpiresAt: time.Now().Add(time.Duration(out.ExpiresIn) * time.Second)}, nil
+	}))
+	return err
+}
+
+func (c *Client) storeRefresh(ctx context.Context, out AccessToken) error {
 	const refreshTTL = 180 * 24 * time.Hour
 	// Essential refresh persistence precedes publishing the access token.
-	encoded, err := json.Marshal(refreshLifetime{RefreshToken: out.RefreshToken, ExpiresAt: time.Now().Add(refreshTTL)})
+	lifetime := refreshLifetime{RefreshToken: out.RefreshToken, ExpiresAt: time.Now().Add(refreshTTL)}
+	previous, ok, err := c.cache.Get(ctx, c.cacheKey("refresh", out.OpenID))
+	if err != nil {
+		return err
+	}
+	if ok && previous != "" {
+		raw, found, readErr := c.cache.Get(ctx, c.cacheKey("refresh_expiry", out.OpenID))
+		if readErr != nil {
+			return readErr
+		}
+		var oldLifetime refreshLifetime
+		if found && json.Unmarshal([]byte(raw), &oldLifetime) == nil {
+			expiresAt := oldLifetime.expiryFor(previous)
+			if expiresAt.After(time.Now()) {
+				lifetime.PreviousRefreshToken = previous
+				lifetime.PreviousExpiresAt = &expiresAt
+			}
+		}
+	}
+	encoded, err := json.Marshal(lifetime)
 	if err != nil {
 		return err
 	}
 	if err := c.cache.Put(ctx, c.cacheKey("refresh_expiry", out.OpenID), string(encoded), refreshTTL); err != nil {
 		return err
 	}
-	if err := c.cache.Put(ctx, c.cacheKey("refresh", out.OpenID), out.RefreshToken, refreshTTL); err != nil {
-		return err
-	}
-	return c.cache.Put(ctx, c.cacheKey("access", out.OpenID), out.AccessToken, time.Duration(out.ExpiresIn)*time.Second)
+	return c.cache.Put(ctx, c.cacheKey("refresh", out.OpenID), out.RefreshToken, refreshTTL)
 }
 
 func (c *Client) cacheKey(kind, openid string) string {

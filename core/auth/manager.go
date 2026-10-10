@@ -117,10 +117,14 @@ func (m *Manager) refresh(ctx context.Context) (Credential, error) {
 		return credential, err
 	}
 
-	if m.provider == nil {
+	return m.fetch(ctx, m.provider)
+}
+
+func (m *Manager) fetch(ctx context.Context, provider Provider) (Credential, error) {
+	if provider == nil {
 		return Credential{}, fmt.Errorf("auth: nil provider")
 	}
-	credential, err = m.provider.Token(ctx)
+	credential, err := provider.Token(ctx)
 	if err != nil {
 		return Credential{}, err
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -510,38 +511,219 @@ func TestMalformedRefreshDoesNotOverwriteExistingRefresh(t *testing.T) {
 	}
 }
 
-// A failed issuance may leave new expiry metadata, but cannot authorize extending
-// an older refresh credential using that different issuance's lifetime.
-func TestFailedIssuanceDoesNotApplyNewExpiryToOldRefresh(t *testing.T) {
+// Failed replacements must retain the old issuance's deadline, including after
+// repeated failures, without applying the new issuance's longer lifetime.
+func TestFailedIssuancePreservesOldRefreshLifetime(t *testing.T) {
+	for _, failures := range []int{1, 2} {
+		t.Run(fmt.Sprint(failures), func(t *testing.T) {
+			ctx := context.Background()
+			cache := newClockCache()
+			var issuances int
+			client := New(callerFunc(func(_ context.Context, r request.Request) error {
+				out := tokenFixture()
+				switch r.Path {
+				case "sns/oauth2/access_token":
+					issuances++
+					if issuances > 1 {
+						out.AccessToken = fmt.Sprintf("new-access-%d", issuances)
+						out.RefreshToken = fmt.Sprintf("new-issuance-%d", issuances)
+					}
+					*r.Result.(*AccessToken) = out
+				case "sns/oauth2/refresh_token":
+					if got := r.Query.Get("refresh_token"); got != "refresh" {
+						return fmt.Errorf("refresh=%q, want original credential", got)
+					}
+					out.RefreshToken = "rotation"
+					*r.Result.(*AccessToken) = out
+				case "sns/userinfo":
+					*r.Result.(*UserInfo) = UserInfo{Nickname: "restored"}
+				default:
+					return fmt.Errorf("path=%s", r.Path)
+				}
+				return nil
+			}), Config{AppID: "app"}, cache)
+			if _, err := client.TokenFromCode(ctx, "first"); err != nil {
+				t.Fatal(err)
+			}
+			deadline := time.Now().Add(time.Hour)
+			if err := cache.Put(ctx, client.cacheKey("refresh_expiry", "user"), `{"refresh_token":"refresh","expires_at":"`+deadline.Format(time.RFC3339Nano)+`"}`, time.Hour); err != nil {
+				t.Fatal(err)
+			}
+			if err := cache.Put(ctx, client.cacheKey("refresh", "user"), "refresh", time.Hour); err != nil {
+				t.Fatal(err)
+			}
+			cache.failKey = client.cacheKey("refresh", "user")
+			cache.fail = errors.New("write failed")
+			for attempt := 0; attempt < failures; attempt++ {
+				if _, err := client.TokenFromCode(ctx, "replacement"); !errors.Is(err, cache.fail) {
+					t.Fatalf("failed replacement err=%v", err)
+				}
+			}
+			if value, ok, _ := cache.Get(ctx, client.cacheKey("access", "user")); !ok || value != "fresh" {
+				t.Fatalf("replacement published access=%q ok=%v", value, ok)
+			}
+			cache.failKey = ""
+			if err := cache.Delete(ctx, client.cacheKey("access", "user")); err != nil {
+				t.Fatal(err)
+			}
+			user, err := client.UserInfo(ctx, "user")
+			if err != nil || user.Nickname != "restored" {
+				t.Fatalf("recovery after failed issuance: user=%v err=%v", user, err)
+			}
+			cache.advance(2 * time.Hour)
+			if value, ok, _ := cache.Get(ctx, client.cacheKey("refresh", "user")); ok {
+				t.Fatalf("old refresh lifetime extended: %q", value)
+			}
+		})
+	}
+}
+
+func TestSuccessfulIssuanceUsesNewRefreshLifetime(t *testing.T) {
+	ctx := context.Background()
 	cache := newClockCache()
-	var exchanges int
 	client := New(callerFunc(func(_ context.Context, r request.Request) error {
 		out := tokenFixture()
-		exchanges++
-		switch exchanges {
-		case 2:
+		switch r.Path {
+		case "sns/oauth2/access_token":
 			out.RefreshToken = "new-issuance"
-		case 3:
+		case "sns/oauth2/refresh_token":
+			if got := r.Query.Get("refresh_token"); got != "new-issuance" {
+				return fmt.Errorf("refresh=%q, want new issuance", got)
+			}
 			out.RefreshToken = "rotation"
+		default:
+			return fmt.Errorf("path=%s", r.Path)
 		}
 		*r.Result.(*AccessToken) = out
 		return nil
 	}), Config{AppID: "app"}, cache)
-	if _, err := client.TokenFromCode(context.Background(), "first"); err != nil {
+	deadline := time.Now().Add(time.Hour)
+	if err := cache.Put(ctx, client.cacheKey("refresh", "user"), "old", time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	cache.failKey = client.cacheKey("refresh", "user")
-	cache.fail = errors.New("write failed")
-	if _, err := client.TokenFromCode(context.Background(), "second"); err == nil {
-		t.Fatal("failed cache write accepted")
+	if err := cache.Put(ctx, client.cacheKey("refresh_expiry", "user"), `{"refresh_token":"old","expires_at":"`+deadline.Format(time.RFC3339Nano)+`"}`, time.Hour); err != nil {
+		t.Fatal(err)
 	}
-	cache.failKey = ""
-	_ = cache.Delete(context.Background(), client.cacheKey("access", "user"))
-	if _, err := client.accessToken(context.Background(), "user"); err == nil {
-		t.Fatal("used another issuance's expiry for old refresh token")
+	if _, err := client.TokenFromCode(ctx, "replacement"); err != nil {
+		t.Fatal(err)
 	}
-	if value, ok, _ := cache.Get(context.Background(), client.cacheKey("refresh", "user")); !ok || value != "refresh" {
-		t.Fatalf("refresh=%q ok=%v", value, ok)
+	if err := cache.Delete(ctx, client.cacheKey("access", "user")); err != nil {
+		t.Fatal(err)
+	}
+	if token, err := client.accessToken(ctx, "user"); err != nil || token != "fresh" {
+		t.Fatalf("refresh new issuance: token=%q err=%v", token, err)
+	}
+	cache.advance(2 * time.Hour)
+	if value, ok, _ := cache.Get(ctx, client.cacheKey("refresh", "user")); !ok || value != "rotation" {
+		t.Fatalf("new issuance inherited old deadline: value=%q ok=%v", value, ok)
+	}
+	cache.advance(180 * 24 * time.Hour)
+	if _, ok, _ := cache.Get(ctx, client.cacheKey("refresh", "user")); ok {
+		t.Fatal("new refresh lifetime was extended by rotation")
+	}
+}
+
+func TestLegacyPreviousRefreshBindingRetainsSharedDeadline(t *testing.T) {
+	ctx := context.Background()
+	cache := newClockCache()
+	client := New(callerFunc(func(_ context.Context, r request.Request) error {
+		if r.Path != "sns/oauth2/refresh_token" || r.Query.Get("refresh_token") != "refresh" {
+			return fmt.Errorf("request=%s %v", r.Path, r.Query)
+		}
+		out := tokenFixture()
+		out.RefreshToken = "rotation"
+		*r.Result.(*AccessToken) = out
+		return nil
+	}), Config{AppID: "app"}, cache)
+	deadline := time.Now().Add(time.Hour)
+	if err := cache.Put(ctx, client.cacheKey("refresh", "user"), "refresh", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	// Previously persisted failed rotations omit previous_expires_at.
+	if err := cache.Put(ctx, client.cacheKey("refresh_expiry", "user"), `{"refresh_token":"pending-rotation","previous_refresh_token":"refresh","expires_at":"`+deadline.Format(time.RFC3339Nano)+`"}`, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if token, err := client.accessToken(ctx, "user"); err != nil || token != "fresh" {
+		t.Fatalf("legacy rotation metadata: token=%q err=%v", token, err)
+	}
+	cache.advance(2 * time.Hour)
+	if _, ok, _ := cache.Get(ctx, client.cacheKey("refresh", "user")); ok {
+		t.Fatal("legacy shared deadline was extended")
+	}
+}
+
+type issuancePauseCache struct {
+	corecache.Cache
+	entered, resume chan struct{}
+	releaseOnce     sync.Once
+}
+
+func (c *issuancePauseCache) release() { c.releaseOnce.Do(func() { close(c.resume) }) }
+
+func (c *issuancePauseCache) Put(ctx context.Context, key, value string, ttl time.Duration) error {
+	if err := c.Cache.Put(ctx, key, value, ttl); err != nil {
+		return err
+	}
+	if strings.Contains(key, ":refresh_expiry:") && strings.Contains(value, `"refresh_token":"new-issuance"`) {
+		close(c.entered)
+		select {
+		case <-c.resume:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
+}
+
+func TestRefreshCannotOverwriteInProgressIssuanceMetadata(t *testing.T) {
+	ctx := context.Background()
+	cache := &issuancePauseCache{Cache: corecache.NewMemory(), entered: make(chan struct{}), resume: make(chan struct{})}
+	defer cache.release()
+	var refreshes atomic.Int32
+	client := New(callerFunc(func(_ context.Context, r request.Request) error {
+		out := tokenFixture()
+		switch r.Path {
+		case "sns/oauth2/access_token":
+			out.AccessToken, out.RefreshToken = "new-access", "new-issuance"
+		case "sns/oauth2/refresh_token":
+			refreshes.Add(1)
+			out.RefreshToken = "rotated-" + r.Query.Get("refresh_token")
+		case "sns/userinfo":
+			*r.Result.(*UserInfo) = UserInfo{Nickname: "restored"}
+			return nil
+		default:
+			return fmt.Errorf("path=%s", r.Path)
+		}
+		*r.Result.(*AccessToken) = out
+		return nil
+	}), Config{AppID: "app"}, cache)
+	deadline := time.Now().Add(time.Hour)
+	if err := cache.Cache.Put(ctx, client.cacheKey("refresh", "user"), "original", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if err := cache.Cache.Put(ctx, client.cacheKey("refresh_expiry", "user"), `{"refresh_token":"original","expires_at":"`+deadline.Format(time.RFC3339Nano)+`"}`, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	issued := make(chan error, 1)
+	go func() { _, err := client.TokenFromCode(ctx, "new-code"); issued <- err }()
+	<-cache.entered
+	// While publication is paused, an expired-access request must wait rather
+	// than rotate the previous token and replace the pending issuance metadata.
+	waitCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
+	_, waitErr := client.UserInfo(waitCtx, "user")
+	cache.release()
+	if err := <-issued; err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(waitErr, context.DeadlineExceeded) || refreshes.Load() != 0 {
+		t.Fatalf("refresh ran during issuance: err=%v refreshes=%d", waitErr, refreshes.Load())
+	}
+	if err := cache.Delete(ctx, client.cacheKey("access", "user")); err != nil {
+		t.Fatal(err)
+	}
+	if user, err := client.UserInfo(ctx, "user"); err != nil || user.Nickname != "restored" {
+		t.Fatalf("new issuance rotation: user=%v err=%v", user, err)
 	}
 }
 

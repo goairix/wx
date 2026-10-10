@@ -18,6 +18,11 @@ credential, err := manager.Token(ctx)
 context：等待者取消只终止自身等待；刷新 leader 取消后，仍有效的等待者会重新选举
 leader，不会继承其他请求的 `context.Canceled`。
 
+重新授权需要显式替换凭据时，使用 `manager.Update(ctx, provider)`。它与同一缓存和 key
+的刷新、失效及其他替换串行执行，即使已有有效缓存也会调用本次 provider。provider 可先
+持久化配套的 refresh token，再由 manager 发布 access token。等待支持取消，provider
+沿用原始 context；操作结束后，等待读取凭据的请求会重新检查缓存。
+
 平台明确拒绝某个 token 时，可以使该凭据失效：
 
 ```go
