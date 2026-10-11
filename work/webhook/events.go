@@ -29,8 +29,12 @@ type Event struct {
 	Description       string `xml:"Description" json:"Description"`
 	URL               string `xml:"Url" json:"Url"`
 
-	Event          string          `xml:"Event" json:"Event"`
-	EventKey       string          `xml:"EventKey" json:"EventKey"`
+	Event    string `xml:"Event" json:"Event"`
+	EventKey string `xml:"EventKey" json:"EventKey"`
+	// Token is the sync_msg credential from a kf_msg_or_event notification,
+	// distinct from both access_token and the callback verification token.
+	Token          string          `xml:"Token" json:"Token"`
+	OpenKFID       string          `xml:"OpenKfId" json:"OpenKfId"`
 	Mode           int             `xml:"Mode" json:"Mode"`
 	ChangeType     string          `xml:"ChangeType" json:"ChangeType"`
 	SuiteID        string          `xml:"SuiteId" json:"SuiteId"`
@@ -194,6 +198,13 @@ type ApprovalEvent struct{ Event }
 // WorkbenchModeSwitchEvent represents changes to custom workbench display.
 // Mode is 1 when enabled and 0 when disabled.
 type WorkbenchModeSwitchEvent struct{ Event }
+
+// KefuMessageEvent notifies that customer service messages or events can be
+// fetched with SyncMessages using Token and OpenKFID.
+type KefuMessageEvent struct{ Event }
+
+// KefuMessage returns the event as a kf_msg_or_event notification.
+func (e Event) KefuMessage() KefuMessageEvent { return KefuMessageEvent{Event: e} }
 
 // SuiteTicket returns the event as a suite ticket event.
 func (e Event) SuiteTicketEvent() SuiteTicketEvent { return SuiteTicketEvent{Event: e} }

@@ -237,6 +237,18 @@ func (c *Client) SendVideo(
 	return c.sendMedia(ctx, "video", toUser, openKFID, mediaID, messageID)
 }
 
+// SendFile sends a file using a temporary media ID. An empty messageID lets
+// the platform generate the message ID returned by this method.
+func (c *Client) SendFile(
+	ctx context.Context,
+	toUser string,
+	openKFID string,
+	mediaID string,
+	messageID string,
+) (string, error) {
+	return c.sendMedia(ctx, "file", toUser, openKFID, mediaID, messageID)
+}
+
 func (c *Client) sendMedia(
 	ctx context.Context,
 	mediaType string,
@@ -261,6 +273,8 @@ func (c *Client) sendMedia(
 		body.Voice = content
 	case "video":
 		body.Video = content
+	case "file":
+		body.File = content
 	}
 	var result struct {
 		MessageID string `json:"msgid"`

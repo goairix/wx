@@ -77,6 +77,7 @@ type SyncMsgItem struct {
 	Image          *MediaContent    `json:"image,omitempty"`
 	Voice          *MediaContent    `json:"voice,omitempty"`
 	Video          *MediaContent    `json:"video,omitempty"`
+	File           *MediaContent    `json:"file,omitempty"`
 	Event          *MsgEventContent `json:"event,omitempty"`
 }
 
@@ -92,7 +93,7 @@ type TextContent struct {
 	Content string `json:"content"`
 }
 
-// MediaContent 媒体消息内容（图片/语音/视频）
+// MediaContent 媒体消息内容（图片/语音/视频/文件）
 type MediaContent struct {
 	MediaId string `json:"media_id"`
 }
@@ -157,6 +158,7 @@ type sendMsgRequest struct {
 	Image    *MediaContent `json:"image,omitempty"`
 	Voice    *MediaContent `json:"voice,omitempty"`
 	Video    *MediaContent `json:"video,omitempty"`
+	File     *MediaContent `json:"file,omitempty"`
 }
 
 // sendMsgResponse 发送消息响应
